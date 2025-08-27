@@ -316,6 +316,15 @@ class ChordPlayer {
     return bytes;
   }
 
+  static Future<void> stopAnyPlayback() async {
+    try {
+      await _player.stop();
+      print('ChordPlayer: Stopped any current playback');
+    } catch (e) {
+      print('ChordPlayer: Error stopping playback: $e');
+    }
+  }
+
   static Future<void> dispose() async {
     try {
       await _player.stop();

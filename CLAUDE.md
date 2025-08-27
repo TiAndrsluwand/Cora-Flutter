@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 6. **Hot Reload**: Fixed static resource management for proper hot reload support
 7. **Piano Widget Refactor**: Simplified interface by removing dropdown selector for minimal design
 8. **Visual Highlighting**: Enhanced chord visualization with consistent orange styling and improved contrast
+9. **Metronome System**: Comprehensive metronome with count-in functionality for professional recording workflow
 
 ### Known Working Features
 - ✅ Audio recording (20-second WAV files)
@@ -22,6 +23,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ Chord playback with realistic piano synthesis
 - ✅ Visual feedback (bouncing note, progress bars, chord highlighting)
 - ✅ Clean UI without debug elements
+- ✅ **Professional metronome system with count-in functionality**
+- ✅ **Configurable BPM (60-200) and time signatures (4/4, 3/4, 2/4, 6/8, 2/2)**
+- ✅ **Visual count-in indicators with beat tracking**
+- ✅ **Strong/weak beat audio patterns (downbeat emphasis)**
 
 ### Recent Bug Fixes
 - **Note Parsing**: Fixed "Failed to parse note: F" - now correctly maps F→F4, A→A4, C→C4
@@ -66,20 +71,21 @@ This is a Flutter music analysis app that records audio, detects pitch/key, and 
 ### Core Structure
 - **lib/main.dart**: App entry point with MaterialApp setup
 - **lib/src/recorder/**: Main UI (RecorderPage) - recording, playback, analysis, piano integration
-- **lib/src/widgets/**: Interactive piano keyboard component
+- **lib/src/widgets/**: Interactive components (piano keyboard, metronome controls, count-in indicator)
 - **lib/src/audio/**: Low-level audio processing (WAV decoding, pitch detection, note conversion)
 - **lib/src/analysis/**: Music theory logic (key detection, chord engine, progression suggestions)
-- **lib/src/sound/**: Audio synthesis for chord playback (now using just_audio)
+- **lib/src/sound/**: Audio synthesis (chord playback and metronome using just_audio)
 - **lib/src/theory/**: Music theory utilities
 
 ### Audio Processing Pipeline
-1. **Recording**: Uses `record` package to capture 20-second WAV files
-2. **Pitch Detection**: Autocorrelation algorithm analyzes audio samples
-3. **Note Consolidation**: Converts pitch data to discrete musical notes
-4. **Key Detection**: Uses Krumhansl-Schmuckler profiles for key identification
-5. **Chord Suggestions**: Generates progressions based on detected melody and key
-6. **Piano Visualization**: Shows chord notes on interactive piano keyboard
-7. **Audio Playback**: Synthesizes and plays chord sounds via just_audio
+1. **Metronome Count-In** (optional): Plays count-in measure before recording starts
+2. **Recording**: Uses `record` package to capture 20-second WAV files
+3. **Pitch Detection**: Autocorrelation algorithm analyzes audio samples
+4. **Note Consolidation**: Converts pitch data to discrete musical notes
+5. **Key Detection**: Uses Krumhansl-Schmuckler profiles for key identification
+6. **Chord Suggestions**: Generates progressions based on detected melody and key
+7. **Piano Visualization**: Shows chord notes on interactive piano keyboard
+8. **Audio Playback**: Synthesizes and plays chord sounds via just_audio
 
 ### Key Dependencies
 - `record`: Audio recording functionality
@@ -123,13 +129,47 @@ The app switches between recording and playback audio sessions to handle microph
 - Comprehensive error handling and fallback test tones
 - Proper resource cleanup for hot reload support
 
+### MetronomePlayer (Timing Engine)
+**Location**: `lib/src/sound/metronome_player.dart`
+**Features**:
+- Comprehensive metronome system with professional recording workflow
+- Configurable BPM (60-200) and time signatures (4/4, 3/4, 2/4, 6/8, 2/2)
+- Count-in functionality: plays one full measure before recording starts
+- Strong beat (downbeat) vs weak beat audio differentiation (1200Hz vs 800Hz)
+- Visual beat tracking with real-time callbacks
+- Optional metronome continuation during recording
+- Sharp click synthesis with exponential decay envelope
+- Proper resource cleanup and hot reload support
+
+### MetronomeControls Widget
+**Location**: `lib/src/widgets/metronome_controls.dart`
+**Features**:
+- Professional metronome control interface
+- BPM adjustment via slider, text input, and increment/decrement buttons
+- Time signature dropdown with common patterns
+- Advanced settings (volume control, continue during recording)
+- Real-time settings synchronization with MetronomePlayer
+- Informational tooltips and help text
+
+### CountInIndicator Widget
+**Location**: `lib/src/widgets/count_in_indicator.dart`
+**Features**:
+- Visual count-in display with animated beat indicators
+- Phase-specific styling (amber for count-in, red for recording)
+- Real-time beat tracking with pulse animations
+- Downbeat emphasis (beat 1 has thicker border)
+- Scale animation for smooth phase transitions
+- Professional recording status display
+
 ### RecorderPage (Main UI)
 **Location**: `lib/src/recorder/recorder_page.dart`
 **Features**:
 - Recording interface with progress indicator and bouncing note animation
+- **Integrated metronome system with count-in workflow**
 - Analysis workflow with loading overlay
 - Chord progression display with clickable buttons
 - Piano keyboard integration with state synchronization
+- **Visual count-in indicators and beat tracking**
 - Clear results functionality
 
 ## Troubleshooting
@@ -163,3 +203,21 @@ When chord "Am" is selected, verify:
 - ✅ Chord info displays as "Am: A, C, E" above piano
 - ✅ No dropdown selector present (removed for minimal design)
 - ✅ Consistent styling across white and black keys
+
+### Metronome System Issues
+- **Count-In Not Working**: Ensure metronome is enabled in controls and BPM is set properly
+- **Audio Not Playing**: Check volume settings and device audio permissions
+- **Beat Timing**: Verify BPM calculations (60000ms / BPM = beat interval)
+- **Phase Transitions**: Count-in should automatically transition to recording after full measure
+- **Visual Indicators**: Beat circles should pulse and change color based on phase
+- **Hot Reload**: MetronomePlayer.dispose() is properly integrated for cleanup
+
+### Metronome Workflow Verification
+When "Use Metronome" is enabled and user presses Record:
+1. ✅ Shows "Get ready... Count-in starting!" message
+2. ✅ CountInIndicator appears with amber styling
+3. ✅ Plays count-in measure (e.g., 4 beats for 4/4 time)
+4. ✅ Visual beat indicators pulse in sequence
+5. ✅ After count-in completes, transitions to recording phase
+6. ✅ Recording indicator turns red, actual audio recording begins
+7. ✅ Optional: Metronome continues during recording if enabled

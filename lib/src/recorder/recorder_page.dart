@@ -18,6 +18,8 @@ import '../analysis/chord_engine.dart' as CE;
 import '../analysis/chord_progression_suggestion.dart';
 import '../analysis/detected_chord.dart';
 import '../widgets/piano_keyboard.dart';
+import '../widgets/metronome_controls.dart';
+import '../sound/metronome_player.dart';
 import '../theme/theme_provider.dart';
 
 class RecorderPage extends StatefulWidget {
@@ -52,6 +54,13 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   
   // Piano keyboard state
   DetectedChord? _selectedChord;
+  
+  // Metronome state
+  bool _useMetronome = false;
+  RecordingPhase _recordingPhase = RecordingPhase.idle;
+  int _currentBeat = 0;
+  int _totalBeats = 4;
+  bool _waitingForCountIn = false;
 
   @override
   void initState() {
@@ -59,6 +68,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     _initAudioSession();
     _loadSf();
     _bindPlayerStreams();
+    _initMetronome();
     
     // Initialize animation controller
     _noteAnimationController = AnimationController(
@@ -77,9 +87,52 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   Future<void> _loadSf() async {
     await ChordPlayer.ensureLoaded(context);
   }
+  
+  Future<void> _initMetronome() async {
+    await MetronomePlayer.ensureLoaded(context);
+    
+    // Set up metronome callbacks with throttling
+    MetronomePlayer.setBeatCallback((beat, totalBeats, phase) {
+      if (!mounted) return;
+      print('RecorderPage: Received beat callback - beat=$beat/$totalBeats phase=$phase');
+      
+      // Only update if something actually changed to prevent excessive rebuilds
+      if (_currentBeat != beat || _totalBeats != totalBeats || _recordingPhase != phase) {
+        print('RecorderPage: Updating UI state - beat $_currentBeat→$beat phase $_recordingPhase→$phase');
+        
+        // Use scheduleMicrotask to avoid blocking main thread with setState()
+        scheduleMicrotask(() {
+          if (!mounted) return;
+          setState(() {
+            _currentBeat = beat;
+            _totalBeats = totalBeats;
+            _recordingPhase = phase;
+          });
+        });
+      } else {
+        print('RecorderPage: No UI update needed - values unchanged');
+      }
+    });
+    
+    MetronomePlayer.setCountInCompleteCallback(() {
+      if (!mounted) return;
+      // Use scheduleMicrotask to avoid timer callback issues
+      scheduleMicrotask(() {
+        if (mounted && _waitingForCountIn) {
+          _startActualRecording();
+        }
+      });
+    });
+    
+    // Sync initial state
+    setState(() {
+      _useMetronome = MetronomePlayer.enabled;
+      _totalBeats = MetronomePlayer.timeSignature.numerator;
+    });
+  }
 
   Future<void> _toggle() async {
-    if (_isRecording) {
+    if (_isRecording || _waitingForCountIn) {
       await _stop();
     } else {
       await _start();
@@ -88,21 +141,75 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
 
   Future<void> _start() async {
     try {
+      print('=== STARTING RECORDING WORKFLOW ===');
+      
       // Pause any ongoing chord playback to avoid audio mix issues
-      try { await _player.stop(); } catch (_) {}
+      try { 
+        await _player.stop(); 
+        await ChordPlayer.stopAnyPlayback();
+        print('Stopped existing audio playback');
+      } catch (e) {
+        print('Warning: Error stopping audio playback: $e');
+      }
 
+      print('Requesting microphone permission...');
       final mic = await Permission.microphone.request();
       if (mic != PermissionStatus.granted) {
-        print('Microphone permission not granted');
+        print('ERROR: Microphone permission not granted - status: $mic');
+        _showErrorSnackBar('Microphone permission is required to record');
         return;
       }
+      print('✓ Microphone permission granted');
 
       final tempDir = await getTemporaryDirectory();
       _path = '${tempDir.path}/temp.wav';
-      print('Recording to: $_path');
+      print('Recording path set to: $_path');
 
       _seconds = 0;
-      setState(() => _isRecording = true);
+      
+      if (_useMetronome) {
+        print('Using metronome - starting count-in phase');
+        // Start with count-in if metronome is enabled
+        setState(() {
+          _waitingForCountIn = true;
+          _recordingPhase = RecordingPhase.countIn;
+        });
+        
+        print('Starting recording with metronome count-in');
+        await MetronomePlayer.startRecordingWithCountIn();
+      } else {
+        print('No metronome - starting recording immediately');
+        // Start recording immediately if metronome is disabled
+        await _startActualRecording();
+      }
+      print('=== RECORDING WORKFLOW START COMPLETE ===');
+    } catch (e) {
+      print('ERROR starting recording: $e');
+      print('Stack trace: ${StackTrace.current}');
+      setState(() {
+        _waitingForCountIn = false;
+        _recordingPhase = RecordingPhase.idle;
+      });
+      _showErrorSnackBar('Failed to start recording: $e');
+    }
+  }
+
+  /// Starts the actual audio recording (called after count-in or immediately)
+  Future<void> _startActualRecording() async {
+    try {
+      // Validate path exists before starting
+      if (_path == null) {
+        print('Error: Recording path is null!');
+        throw Exception('Recording path not initialized');
+      }
+      
+      print('Starting actual recording to: $_path');
+      
+      setState(() {
+        _isRecording = true;
+        _waitingForCountIn = false;
+        _recordingPhase = RecordingPhase.recording;
+      });
       
       // Start note bouncing animation
       _noteAnimationController.repeat(reverse: true);
@@ -116,17 +223,46 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         }
       });
 
+      // CRITICAL: Ensure all audio resources are stopped before recording
+      try {
+        await _player.stop();
+        await ChordPlayer.stopAnyPlayback();
+        // Give metronome time to finish current beat if playing
+        await Future.delayed(const Duration(milliseconds: 50));
+      } catch (e) {
+        print('Warning: Error stopping audio resources: $e');
+      }
+
       // Configure audio session for recording
       await _configureForRecording();
+      
+      // Add delay to ensure audio session is properly configured
+      await Future.delayed(const Duration(milliseconds: 150));
+      
       await _record.start(const RecordConfig(encoder: AudioEncoder.wav), path: _path!);
-      print('Recording started');
+      print('Actual recording started successfully');
     } catch (e) {
-      print('Error starting recording: $e');
+      print('Error starting actual recording: $e');
+      // Stop metronome on error
+      await MetronomePlayer.stopMetronome();
+      setState(() {
+        _isRecording = false;
+        _waitingForCountIn = false;
+        _recordingPhase = RecordingPhase.idle;
+      });
+      rethrow; // Re-throw so caller can handle
     }
   }
-
+  
   Future<void> _stop() async {
-    final filePath = await _record.stop();
+    // Stop metronome first
+    await MetronomePlayer.stopMetronome();
+    
+    String? filePath;
+    if (_isRecording) {
+      filePath = await _record.stop();
+    }
+    
     _timer?.cancel();
     
     // Stop note animation
@@ -135,14 +271,19 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     
     setState(() {
       _isRecording = false;
-      _path = filePath;
+      _waitingForCountIn = false;
+      _recordingPhase = RecordingPhase.idle;
+      _currentBeat = 0;
+      _path = filePath ?? _path;
       _seconds = 0;
     });
+    
     // Switch session to playback after recording ends
     await _configureForPlayback();
+    
     // Compute simple RMS level to detect silence
-    try {
-      if (_path != null) {
+    if (_path != null) {
+      try {
         final bytes = await File(_path!).readAsBytes();
         final wav = WavDecoder.decode(bytes);
         if (wav != null && wav.samples.isNotEmpty) {
@@ -152,8 +293,10 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
           final db = 10 * (math.log(rms) / math.ln10);
           if (mounted) setState(() => _lastRmsDb = db);
         }
+      } catch (e) {
+        print('Error computing RMS: $e');
       }
-    } catch (_) {}
+    }
   }
 
   void _bindPlayerStreams() {
@@ -236,12 +379,24 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     return triad.map((n) => octaveMap[n] ?? n).toList();
   }
 
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
     _noteAnimationController.dispose();
     _player.dispose();
     ChordPlayer.dispose(); // Fire and forget for cleanup
+    MetronomePlayer.dispose(); // Fire and forget for cleanup
     super.dispose();
   }
 
@@ -275,23 +430,89 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
             child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Metronome Controls
+            MetronomeControls(
+              onEnabledChanged: (enabled) {
+                setState(() => _useMetronome = enabled);
+              },
+              onTimeSignatureChanged: (timeSignature) {
+                setState(() => _totalBeats = timeSignature.numerator);
+              },
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
                 ElevatedButton(
                   onPressed: _toggle,
-                  child: Text(_isRecording ? 'STOP' : 'RECORD'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: (_isRecording || _waitingForCountIn) 
+                        ? Colors.red 
+                        : null,
+                    foregroundColor: (_isRecording || _waitingForCountIn) 
+                        ? Colors.white 
+                        : null,
+                  ),
+                  child: Text(
+                    _waitingForCountIn 
+                        ? 'CANCEL' 
+                        : (_isRecording ? 'STOP' : 'RECORD')
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  _isRecording
-                      ? 'Recording... ${_seconds}s / ${_maxSeconds}s max'
-                      : 'You can record up to ${_maxSeconds} seconds',
+                  _waitingForCountIn
+                      ? 'Get ready... Count-in starting!'
+                      : (_isRecording
+                          ? 'Recording... ${_seconds}s / ${_maxSeconds}s max'
+                          : 'You can record up to ${_maxSeconds} seconds'),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            if (_isRecording) ...[
+            // Count-in indicator (simple text to avoid widget rebuild issues)
+            if (_recordingPhase != RecordingPhase.idle) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: Card(
+                  color: _recordingPhase == RecordingPhase.countIn 
+                      ? Colors.amber.shade100 
+                      : Colors.red.shade100,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _recordingPhase == RecordingPhase.countIn
+                              ? '🎵 Count-in: $_currentBeat/$_totalBeats'
+                              : '🔴 Recording!',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: _recordingPhase == RecordingPhase.countIn
+                                ? Colors.amber.shade700
+                                : Colors.red.shade700,
+                          ),
+                        ),
+                        if (_recordingPhase == RecordingPhase.countIn) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Recording will start after count-in',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            
+            if (_isRecording && _recordingPhase == RecordingPhase.recording) ...[
               LinearProgressIndicator(value: _seconds / _maxSeconds),
               const SizedBox(height: 16),
               // Animated musical note during recording
@@ -320,7 +541,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
               ),
             ],
             const SizedBox(height: 24),
-            // Analysis actions
+            // Analysis actions  
             Row(
               children: [
                 ElevatedButton(
