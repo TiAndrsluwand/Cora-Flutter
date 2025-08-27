@@ -22,12 +22,42 @@ class CHORD_TYPES {
 
 class SCALE_TYPES {
   static const MAJOR = ScaleType('MAJOR', [0, 2, 4, 5, 7, 9, 11]);
-  static const NATURAL_MINOR = ScaleType('NATURAL_MINOR', [0, 2, 3, 5, 7, 8, 10]);
+  static const NATURAL_MINOR =
+      ScaleType('NATURAL_MINOR', [0, 2, 3, 5, 7, 8, 10]);
 }
 
-const List<String> _NOTE_NAMES_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const Map<String,int> _NOTE_TO_INDEX = {
-  'C':0,'C#':1,'DB':1,'D':2,'D#':3,'EB':3,'E':4,'F':5,'F#':6,'GB':6,'G':7,'G#':8,'AB':8,'A':9,'A#':10,'BB':10,'B':11
+const List<String> _NOTE_NAMES_SHARP = [
+  'C',
+  'C#',
+  'D',
+  'D#',
+  'E',
+  'F',
+  'F#',
+  'G',
+  'G#',
+  'A',
+  'A#',
+  'B'
+];
+const Map<String, int> _NOTE_TO_INDEX = {
+  'C': 0,
+  'C#': 1,
+  'DB': 1,
+  'D': 2,
+  'D#': 3,
+  'EB': 3,
+  'E': 4,
+  'F': 5,
+  'F#': 6,
+  'GB': 6,
+  'G': 7,
+  'G#': 8,
+  'AB': 8,
+  'A': 9,
+  'A#': 10,
+  'BB': 10,
+  'B': 11
 };
 
 String normalizeNoteName(String note) {
@@ -48,12 +78,16 @@ int getNoteIndex(String note) {
 
 List<String> buildScale(String root, ScaleType type) {
   final rootIdx = getNoteIndex(root);
-  return type.intervals.map((i) => _NOTE_NAMES_SHARP[(rootIdx + i) % 12]).toList();
+  return type.intervals
+      .map((i) => _NOTE_NAMES_SHARP[(rootIdx + i) % 12])
+      .toList();
 }
 
 List<String> buildChord(String root, ChordType type) {
   final rootIdx = getNoteIndex(root);
-  return type.intervals.map((i) => _NOTE_NAMES_SHARP[(rootIdx + i) % 12]).toList();
+  return type.intervals
+      .map((i) => _NOTE_NAMES_SHARP[(rootIdx + i) % 12])
+      .toList();
 }
 
 bool isNoteInScale(String note, List<String> scale) {
@@ -78,17 +112,35 @@ int getScaleDegree(String root, List<String> scale) {
 
 int romanNumeralToScaleDegree(String numeral) {
   final map = {
-    'I':1,'II':2,'III':3,'IV':4,'V':5,'VI':6,'VII':7,
-    'i':1,'ii':2,'iii':3,'iv':4,'v':5,'vi':6,'vii':7
+    'I': 1,
+    'II': 2,
+    'III': 3,
+    'IV': 4,
+    'V': 5,
+    'VI': 6,
+    'VII': 7,
+    'i': 1,
+    'ii': 2,
+    'iii': 3,
+    'iv': 4,
+    'v': 5,
+    'vi': 6,
+    'vii': 7
   };
   // Strip accidentals and diminished markers for degree calculation
   final base = numeral.replaceAll(RegExp(r'[°#b]'), '');
   return map[base] ?? 1;
 }
 
-class DiatonicChord { final String root; final ChordType chordType; final String symbol; DiatonicChord(this.root,this.chordType,this.symbol); }
+class DiatonicChord {
+  final String root;
+  final ChordType chordType;
+  final String symbol;
+  DiatonicChord(this.root, this.chordType, this.symbol);
+}
 
-DiatonicChord getDiatonicChord(int degree, String keyRoot, ScaleType scaleType) {
+DiatonicChord getDiatonicChord(
+    int degree, String keyRoot, ScaleType scaleType) {
   final scale = buildScale(keyRoot, scaleType);
   final idx = (degree - 1).clamp(0, 6);
   final root = scale[idx];
@@ -96,24 +148,64 @@ DiatonicChord getDiatonicChord(int degree, String keyRoot, ScaleType scaleType) 
   String symbol;
   if (scaleType == SCALE_TYPES.MAJOR) {
     switch (degree) {
-      case 1: type = CHORD_TYPES.MAJOR_TRIAD; symbol = '${root}'; break;
-      case 2: type = CHORD_TYPES.MINOR_TRIAD; symbol = '${root}m'; break;
-      case 3: type = CHORD_TYPES.MINOR_TRIAD; symbol = '${root}m'; break;
-      case 4: type = CHORD_TYPES.MAJOR_TRIAD; symbol = '${root}'; break;
-      case 5: type = CHORD_TYPES.MAJOR_TRIAD; symbol = '${root}'; break;
-      case 6: type = CHORD_TYPES.MINOR_TRIAD; symbol = '${root}m'; break;
-      default: type = CHORD_TYPES.DIMINISHED_TRIAD; symbol = '${root}°';
+      case 1:
+        type = CHORD_TYPES.MAJOR_TRIAD;
+        symbol = root;
+        break;
+      case 2:
+        type = CHORD_TYPES.MINOR_TRIAD;
+        symbol = '${root}m';
+        break;
+      case 3:
+        type = CHORD_TYPES.MINOR_TRIAD;
+        symbol = '${root}m';
+        break;
+      case 4:
+        type = CHORD_TYPES.MAJOR_TRIAD;
+        symbol = root;
+        break;
+      case 5:
+        type = CHORD_TYPES.MAJOR_TRIAD;
+        symbol = root;
+        break;
+      case 6:
+        type = CHORD_TYPES.MINOR_TRIAD;
+        symbol = '${root}m';
+        break;
+      default:
+        type = CHORD_TYPES.DIMINISHED_TRIAD;
+        symbol = '$root°';
     }
   } else {
     // natural minor
     switch (degree) {
-      case 1: type = CHORD_TYPES.MINOR_TRIAD; symbol = '${root}m'; break;
-      case 2: type = CHORD_TYPES.DIMINISHED_TRIAD; symbol = '${root}°'; break;
-      case 3: type = CHORD_TYPES.MAJOR_TRIAD; symbol = '${root}'; break;
-      case 4: type = CHORD_TYPES.MINOR_TRIAD; symbol = '${root}m'; break;
-      case 5: type = CHORD_TYPES.MINOR_TRIAD; symbol = '${root}m'; break;
-      case 6: type = CHORD_TYPES.MAJOR_TRIAD; symbol = '${root}'; break;
-      default: type = CHORD_TYPES.MAJOR_TRIAD; symbol = '${root}';
+      case 1:
+        type = CHORD_TYPES.MINOR_TRIAD;
+        symbol = '${root}m';
+        break;
+      case 2:
+        type = CHORD_TYPES.DIMINISHED_TRIAD;
+        symbol = '$root°';
+        break;
+      case 3:
+        type = CHORD_TYPES.MAJOR_TRIAD;
+        symbol = root;
+        break;
+      case 4:
+        type = CHORD_TYPES.MINOR_TRIAD;
+        symbol = '${root}m';
+        break;
+      case 5:
+        type = CHORD_TYPES.MINOR_TRIAD;
+        symbol = '${root}m';
+        break;
+      case 6:
+        type = CHORD_TYPES.MAJOR_TRIAD;
+        symbol = root;
+        break;
+      default:
+        type = CHORD_TYPES.MAJOR_TRIAD;
+        symbol = root;
     }
   }
   return DiatonicChord(root, type, symbol);
@@ -125,12 +217,13 @@ String getChordSymbol(String root, ChordType type) {
   if (type == CHORD_TYPES.DOMINANT_SEVENTH) return '${root}7';
   if (type == CHORD_TYPES.MAJOR_SEVENTH) return '${root}maj7';
   if (type == CHORD_TYPES.MINOR_SEVENTH) return '${root}m7';
-  if (type == CHORD_TYPES.HALF_DIMINISHED) return '${root}ø7';
-  if (type == CHORD_TYPES.DIMINISHED_TRIAD) return '${root}°';
+  if (type == CHORD_TYPES.HALF_DIMINISHED) return '$rootø7';
+  if (type == CHORD_TYPES.DIMINISHED_TRIAD) return '$root°';
   return root;
 }
 
-List<DiatonicChord> progressionToChords(List<String> numerals, String keyRoot, ScaleType scaleType) {
+List<DiatonicChord> progressionToChords(
+    List<String> numerals, String keyRoot, ScaleType scaleType) {
   return numerals.map((n) {
     final deg = romanNumeralToScaleDegree(n);
     return getDiatonicChord(deg, keyRoot, scaleType);

@@ -8,19 +8,39 @@ class WavData {
 
 class WavDecoder {
   static WavData? decode(Uint8List bytes) {
-    if (bytes.length < 44) return null;
+    print('WAV Decoder: Processing ${bytes.length} bytes');
+    if (bytes.length < 44) {
+      print('WAV Decoder ERROR: File too small (${bytes.length} < 44 bytes)');
+      return null;
+    }
     final header = ByteData.sublistView(bytes, 0, 44);
     // 'RIFF'
-    if (header.getUint32(0, Endian.little) != 0x46464952) return null;
+    final riffId = header.getUint32(0, Endian.little);
+    if (riffId != 0x46464952) {
+      print('WAV Decoder ERROR: Invalid RIFF header: 0x${riffId.toRadixString(16)}');
+      return null;
+    }
     // 'WAVE'
-    if (header.getUint32(8, Endian.little) != 0x45564157) return null;
+    final waveId = header.getUint32(8, Endian.little);
+    if (waveId != 0x45564157) {
+      print('WAV Decoder ERROR: Invalid WAVE header: 0x${waveId.toRadixString(16)}');
+      return null;
+    }
     // 'fmt '
-    if (header.getUint32(12, Endian.little) != 0x20746d66) return null;
+    final fmtId = header.getUint32(12, Endian.little);
+    if (fmtId != 0x20746d66) {
+      print('WAV Decoder ERROR: Invalid fmt header: 0x${fmtId.toRadixString(16)}');
+      return null;
+    }
     final audioFormat = header.getUint16(20, Endian.little);
     final numChannels = header.getUint16(22, Endian.little);
     final sampleRate = header.getUint32(24, Endian.little);
     final bitsPerSample = header.getUint16(34, Endian.little);
-    if (audioFormat != 1 || bitsPerSample != 16) return null; // PCM 16 only
+    print('WAV Format: ${audioFormat==1 ? 'PCM' : 'Unknown'}, ${numChannels}ch, ${sampleRate}Hz, ${bitsPerSample}bit');
+    if (audioFormat != 1 || bitsPerSample != 16) {
+      print('WAV Decoder ERROR: Unsupported format (need PCM 16-bit, got format=$audioFormat bits=$bitsPerSample)');
+      return null; // PCM 16 only
+    }
     // Find 'data' chunk by scanning chunks safely
     int offset = 12;
     while (offset + 8 <= bytes.length) {
@@ -29,7 +49,11 @@ class WavDecoder {
       offset += 8;
       if (id == 0x61746164) { // 'data'
         // Guard
-        if (offset + size > bytes.length) return null;
+        if (offset + size > bytes.length) {
+          print('WAV Decoder ERROR: Data chunk size ${size} exceeds file bounds');
+          return null;
+        }
+        print('WAV Decoder: Found data chunk, ${size} bytes');
         final bd = ByteData.sublistView(bytes, offset, offset + size);
         final totalSamples = size ~/ 2; // 16-bit samples across all channels
         if (numChannels <= 1) {
@@ -38,6 +62,7 @@ class WavDecoder {
             final s = bd.getInt16(i * 2, Endian.little);
             out[i] = s / 32768.0;
           }
+          print('WAV Decoder SUCCESS: ${out.length} mono samples');
           return WavData(out, sampleRate.toDouble());
         } else {
           // Downmix interleaved channels to mono: average across channels
@@ -53,12 +78,14 @@ class WavDecoder {
             }
             out[f] = (sum / numChannels).clamp(-1.0, 1.0).toDouble();
           }
+          print('WAV Decoder SUCCESS: ${out.length} downmixed samples from ${numChannels} channels');
           return WavData(out, sampleRate.toDouble());
         }
       } else {
         offset += size;
       }
     }
+    print('WAV Decoder ERROR: No data chunk found');
     return null;
   }
 }

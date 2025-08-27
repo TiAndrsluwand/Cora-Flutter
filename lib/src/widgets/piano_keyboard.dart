@@ -4,7 +4,7 @@ import '../analysis/detected_chord.dart';
 class PianoKeyboard extends StatefulWidget {
   final DetectedChord? selectedChord;
   final bool showChordNotes;
-  
+
   const PianoKeyboard({
     super.key,
     this.selectedChord,
@@ -18,21 +18,25 @@ class PianoKeyboard extends StatefulWidget {
 class _PianoKeyboardState extends State<PianoKeyboard> {
   static const List<String> whiteKeys = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
   static const List<String> blackKeys = ['C#', 'D#', '', 'F#', 'G#', 'A#', ''];
-  
+
   // Consistent orange color for highlighting
   static const Color highlightOrange = Color(0xFFFF9500);
 
   bool _isKeyActive(String note) {
     if (widget.selectedChord == null) return false;
     // Remove octave numbers from notes for comparison
-    final chordNotes = widget.selectedChord!.notes.map((n) => n.replaceAll(RegExp(r'\d+'), '')).toList();
+    final chordNotes = widget.selectedChord!.notes
+        .map((n) => n.replaceAll(RegExp(r'\d+'), ''))
+        .toList();
     return chordNotes.contains(note);
   }
 
   List<String> _getActiveNotes() {
     if (widget.selectedChord == null) return [];
     // Remove octave numbers from notes for display
-    return widget.selectedChord!.notes.map((n) => n.replaceAll(RegExp(r'\d+'), '')).toList();
+    return widget.selectedChord!.notes
+        .map((n) => n.replaceAll(RegExp(r'\d+'), ''))
+        .toList();
   }
 
   @override
@@ -48,14 +52,14 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
               Text(
                 '${widget.selectedChord!.symbol}: ${_getActiveNotes().join(', ')}',
                 style: const TextStyle(
-                  fontSize: 16, 
+                  fontSize: 16,
                   fontWeight: FontWeight.w500,
                   color: highlightOrange,
                 ),
               ),
               const SizedBox(height: 12),
             ],
-            
+
             // Piano keyboard - Real piano layout
             // White keys: C D E F G A B (7 per octave)
             // Black keys: C# D# _ F# G# A# _ (5 per octave, gaps between E-F and B-C)
@@ -68,14 +72,16 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
                     children: [
                       for (int octave = 0; octave < 2; octave++)
                         for (int i = 0; i < whiteKeys.length; i++)
-                          _buildWhiteKey('${whiteKeys[i]}${octave + 4}', whiteKeys[i]),
+                          _buildWhiteKey(
+                              '${whiteKeys[i]}${octave + 4}', whiteKeys[i]),
                     ],
                   ),
                   // Black keys (2 octaves) - positioned correctly between white keys
                   for (int octave = 0; octave < 2; octave++)
                     for (int i = 0; i < blackKeys.length; i++)
                       if (blackKeys[i].isNotEmpty)
-                        _buildBlackKey('${blackKeys[i]}${octave + 4}', blackKeys[i], octave * 7 + i),
+                        _buildBlackKey('${blackKeys[i]}${octave + 4}',
+                            blackKeys[i], octave * 7 + i),
                 ],
               ),
             ),
@@ -102,13 +108,15 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
           bottomRight: Radius.circular(3),
         ),
         // Add subtle background tint for active keys
-        boxShadow: isActive ? [
-          BoxShadow(
-            color: highlightOrange.withOpacity(0.1),
-            blurRadius: 2,
-            offset: Offset(0, 1),
-          ),
-        ] : null,
+        boxShadow: isActive
+            ? [
+                BoxShadow(
+                  color: highlightOrange.withOpacity(0.1),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : null,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -130,7 +138,9 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
               note,
               style: TextStyle(
                 fontSize: 8,
-                color: isActive ? highlightOrange.withOpacity(0.9) : Colors.grey.shade600,
+                color: isActive
+                    ? highlightOrange.withOpacity(0.9)
+                    : Colors.grey.shade600,
                 fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -142,16 +152,16 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
 
   Widget _buildBlackKey(String keyName, String note, int globalPosition) {
     final isActive = _isKeyActive(note);
-    
+
     // Calculate correct positioning based on white key layout
     // In each octave: C# is between C-D, D# between D-E, F# between F-G, G# between G-A, A# between A-B
     final octave = globalPosition ~/ 7;
     final positionInOctave = globalPosition % 7;
-    
+
     late double leftOffset;
-    final whiteKeyWidth = 24.5; // 24px + 0.5px margin
+    const whiteKeyWidth = 24.5; // 24px + 0.5px margin
     final octaveOffset = octave * 7 * whiteKeyWidth;
-    
+
     switch (positionInOctave) {
       case 0: // C# - between C(0) and D(1)
         leftOffset = octaveOffset + (0.7 * whiteKeyWidth);
@@ -171,14 +181,16 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
       default:
         leftOffset = 0;
     }
-    
+
     return Positioned(
       left: leftOffset,
       child: Container(
         width: 16,
         height: 50,
         decoration: BoxDecoration(
-          color: isActive ? highlightOrange.withOpacity(0.8) : Colors.grey.shade800,
+          color: isActive
+              ? highlightOrange.withOpacity(0.8)
+              : Colors.grey.shade800,
           border: Border.all(
             color: isActive ? highlightOrange : Colors.grey.shade700,
             width: isActive ? 3 : 1,
@@ -188,13 +200,15 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
             bottomRight: Radius.circular(2),
           ),
           // Add glow effect for active black keys
-          boxShadow: isActive ? [
-            BoxShadow(
-              color: highlightOrange.withOpacity(0.3),
-              blurRadius: 4,
-              spreadRadius: 1,
-            ),
-          ] : null,
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: highlightOrange.withOpacity(0.3),
+                    blurRadius: 4,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
@@ -207,7 +221,8 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
                 decoration: BoxDecoration(
                   color: highlightOrange,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withOpacity(0.8), width: 1),
+                  border: Border.all(
+                      color: Colors.white.withOpacity(0.8), width: 1),
                 ),
               ),
             Padding(

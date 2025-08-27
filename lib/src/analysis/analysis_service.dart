@@ -2,7 +2,6 @@ import 'chord_engine.dart' as CE;
 import 'chord_progression_suggestion.dart';
 import 'detected_chord.dart';
 
-
 class AnalysisResult {
   final String detectedKey;
   final List<ChordProgressionSuggestion> suggestions;
@@ -22,20 +21,26 @@ class AnalysisService {
       CE.DetectedNote(note: 'C', startTime: 2200, duration: 600),
     ];
 
-    final keyLabel = 'C';
-    final isMinor = false;
+    const keyLabel = 'C';
+    const isMinor = false;
 
-    final engine = CE.ChordSuggestionEngine();
+    const engine = CE.ChordSuggestionEngine();
     final progs = engine.suggest(melody, keyLabel, isMinor);
 
-    final uiProgs = progs.take(1).map((p) => ChordProgressionSuggestion(
-      name: p.name,
-      key: '${p.key} ${p.scale == 'NATURAL_MINOR' ? 'minor' : 'major'}',
-      chords: p.chords.map((c) => DetectedChord(symbol: c.symbol, notes: _voiceChord(c.notes))).toList(),
-    )).toList();
+    final uiProgs = progs
+        .take(1)
+        .map((p) => ChordProgressionSuggestion(
+              name: p.name,
+              key: '${p.key} ${p.scale == 'NATURAL_MINOR' ? 'minor' : 'major'}',
+              chords: p.chords
+                  .map((c) => DetectedChord(
+                      symbol: c.symbol, notes: _voiceChord(c.notes)))
+                  .toList(),
+            ))
+        .toList();
 
     return AnalysisResult(
-      detectedKey: '${keyLabel} ${isMinor ? 'minor' : 'major'}',
+      detectedKey: '$keyLabel ${isMinor ? 'minor' : 'major'}',
       suggestions: uiProgs,
     );
   }
@@ -43,7 +48,18 @@ class AnalysisService {
   static List<String> _voiceChord(List<String> triad) {
     // Map note names to specific octaves for nicer playback
     final octaveMap = {
-      'C':'C4','C#':'C#4','D':'D4','D#':'D#4','E':'E4','F':'F4','F#':'F#4','G':'G4','G#':'G#4','A':'A4','A#':'A#4','B':'B4'
+      'C': 'C4',
+      'C#': 'C#4',
+      'D': 'D4',
+      'D#': 'D#4',
+      'E': 'E4',
+      'F': 'F4',
+      'F#': 'F#4',
+      'G': 'G4',
+      'G#': 'G#4',
+      'A': 'A4',
+      'A#': 'A#4',
+      'B': 'B4'
     };
     return triad.map((n) => octaveMap[n] ?? n).toList();
   }
