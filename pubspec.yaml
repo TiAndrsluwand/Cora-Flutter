@@ -1,0 +1,27 @@
+name: cora
+description: Flutter rewrite of Cora with recording, analysis, and piano playback
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  record: ^6.1.1
+  just_audio: ^0.10.4
+  provider: ^6.0.5
+  flutter_sound: ^9.28.0
+  path_provider: ^2.1.2
+  permission_handler: ^12.0.1
+  http: ^1.2.1
+  audio_session: ^0.1.21
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
