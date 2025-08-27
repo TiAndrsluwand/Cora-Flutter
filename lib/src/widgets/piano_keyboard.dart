@@ -18,6 +18,9 @@ class PianoKeyboard extends StatefulWidget {
 class _PianoKeyboardState extends State<PianoKeyboard> {
   static const List<String> whiteKeys = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
   static const List<String> blackKeys = ['C#', 'D#', '', 'F#', 'G#', 'A#', ''];
+  
+  // Consistent orange color for highlighting
+  static const Color highlightOrange = Color(0xFFFF9500);
 
   bool _isKeyActive(String note) {
     if (widget.selectedChord == null) return false;
@@ -47,7 +50,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
                 style: const TextStyle(
                   fontSize: 16, 
                   fontWeight: FontWeight.w500,
-                  color: Colors.orange,
+                  color: highlightOrange,
                 ),
               ),
               const SizedBox(height: 12),
@@ -91,25 +94,34 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(
-          color: isActive ? Colors.orange : Colors.grey.shade300,
-          width: isActive ? 2 : 1,
+          color: isActive ? highlightOrange : Colors.grey.shade300,
+          width: isActive ? 3 : 1,
         ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(3),
           bottomRight: Radius.circular(3),
         ),
+        // Add subtle background tint for active keys
+        boxShadow: isActive ? [
+          BoxShadow(
+            color: highlightOrange.withOpacity(0.1),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ] : null,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           if (isActive)
             Container(
-              width: 6,
-              height: 6,
+              width: 8,
+              height: 8,
               margin: const EdgeInsets.only(bottom: 4),
-              decoration: const BoxDecoration(
-                color: Colors.orange,
+              decoration: BoxDecoration(
+                color: highlightOrange,
                 shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1),
               ),
             ),
           Padding(
@@ -118,7 +130,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
               note,
               style: TextStyle(
                 fontSize: 8,
-                color: isActive ? Colors.orange.shade700 : Colors.grey.shade600,
+                color: isActive ? highlightOrange.withOpacity(0.9) : Colors.grey.shade600,
                 fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -166,27 +178,36 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
         width: 16,
         height: 50,
         decoration: BoxDecoration(
-          color: isActive ? Colors.orange.shade800 : Colors.grey.shade800,
+          color: isActive ? highlightOrange.withOpacity(0.8) : Colors.grey.shade800,
           border: Border.all(
-            color: isActive ? Colors.orange : Colors.grey.shade700,
-            width: isActive ? 2 : 1,
+            color: isActive ? highlightOrange : Colors.grey.shade700,
+            width: isActive ? 3 : 1,
           ),
           borderRadius: const BorderRadius.only(
             bottomLeft: Radius.circular(2),
             bottomRight: Radius.circular(2),
           ),
+          // Add glow effect for active black keys
+          boxShadow: isActive ? [
+            BoxShadow(
+              color: highlightOrange.withOpacity(0.3),
+              blurRadius: 4,
+              spreadRadius: 1,
+            ),
+          ] : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             if (isActive)
               Container(
-                width: 4,
-                height: 4,
+                width: 6,
+                height: 6,
                 margin: const EdgeInsets.only(bottom: 3),
-                decoration: const BoxDecoration(
-                  color: Colors.orange,
+                decoration: BoxDecoration(
+                  color: highlightOrange,
                   shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white.withOpacity(0.8), width: 1),
                 ),
               ),
             Padding(
@@ -195,7 +216,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
                 note.replaceAll('#', '♯'),
                 style: TextStyle(
                   fontSize: 6,
-                  color: isActive ? Colors.orange.shade200 : Colors.white70,
+                  color: isActive ? Colors.white : Colors.white70,
                   fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
