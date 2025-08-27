@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Status & Context (Updated: 2024)
+## Project Status & Context (Updated: 2025)
 
 ### Recent Major Changes & Fixes
 1. **Audio Playback System**: Migrated from flutter_sound to just_audio for reliable chord playback
@@ -11,6 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **Animation**: Added bouncing musical note during recording
 5. **Chord Integration**: Fixed note parsing issues (F,A,C → F4,A4,C4)
 6. **Hot Reload**: Fixed static resource management for proper hot reload support
+7. **Piano Widget Refactor**: Simplified interface by removing dropdown selector for minimal design
+8. **Visual Highlighting**: Enhanced chord visualization with consistent orange styling and improved contrast
 
 ### Known Working Features
 - ✅ Audio recording (20-second WAV files)
@@ -26,6 +28,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Audio Playback**: Switched to just_audio with temp files instead of flutter_sound fromDataBuffer
 - **Hot Reload**: Added proper ChordPlayer.dispose() to prevent static resource conflicts
 - **Piano Integration**: Connected chord buttons to piano keyboard selection and audio
+- **Visual Inconsistency**: Fixed incomplete orange highlighting - all chord notes now have consistent borders and indicator dots
+- **UI Clutter**: Removed dropdown selector from piano widget for cleaner, more intuitive interface
 
 ## Common Commands
 
@@ -99,10 +103,16 @@ The app switches between recording and playback audio sessions to handle microph
 **Features**:
 - 2 octaves (C4-B5) with proper black key positioning
 - Real piano layout with correct spacing
-- Visual chord highlighting (orange borders/indicators)
-- Dropdown chord selector
+- **Enhanced visual chord highlighting**:
+  - Consistent orange color (#FF9500) throughout
+  - 3px orange borders for active chord notes
+  - Orange indicator dots with white borders (8px white keys, 6px black keys)
+  - Subtle box shadows for visual depth
+  - Professional, polished appearance
+- **Minimal interface**: No dropdown selector - chord selection handled by main UI buttons
+- **Clear chord display**: Shows "Am: A, C, E" format above piano keys
 - Integration with DetectedChord objects from analysis
-- Auto-play chords on selection
+- Unmistakable visual feedback for which keys belong to current chord
 
 ### ChordPlayer (Audio Engine)
 **Location**: `lib/src/sound/chord_player.dart`
@@ -139,7 +149,17 @@ The app switches between recording and playback audio sessions to handle microph
 - Fallback to octave 4 for notes without octave specification
 - Check logs for "Failed to parse note:" messages
 
-### Piano Keyboard Not Updating
-- Ensure chord buttons call setState() to update _selectedChord
-- Verify DetectedChord objects have proper notes array
-- Check onChordChange callback integration
+### Piano Keyboard Issues
+- **Visual Highlighting**: All chord notes should show consistent orange borders (3px) and indicator dots
+- **Interface**: Piano widget no longer has dropdown - chord selection controlled by main UI buttons
+- **State Updates**: Ensure chord buttons call setState() to update _selectedChord
+- **Chord Display**: Should show format like "Am: A, C, E" above piano keys
+- **Color Consistency**: All highlighting uses Color(0xFFFF9500) orange throughout
+
+### Visual Highlighting Checklist
+When chord "Am" is selected, verify:
+- ✅ Keys A, C, E ALL have 3px orange borders
+- ✅ Keys A, C, E ALL have orange indicator dots with white borders  
+- ✅ Chord info displays as "Am: A, C, E" above piano
+- ✅ No dropdown selector present (removed for minimal design)
+- ✅ Consistent styling across white and black keys
