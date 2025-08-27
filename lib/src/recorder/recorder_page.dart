@@ -453,14 +453,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
             const SizedBox(height: 24),
             // Interactive Piano Keyboard
             PianoKeyboard(
-              availableChords: _suggestions.expand((prog) => prog.chords).toList(),
               selectedChord: _selectedChord,
-              onChordChange: (chord) {
-                setState(() => _selectedChord = chord);
-                if (chord != null) {
-                  ChordPlayer.playChord(chord.notes);
-                }
-              },
               showChordNotes: true,
             ),
             ],

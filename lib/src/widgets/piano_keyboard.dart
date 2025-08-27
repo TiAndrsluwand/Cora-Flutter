@@ -1,18 +1,13 @@
 import 'package:flutter/material.dart';
-import '../sound/chord_player.dart';
 import '../analysis/detected_chord.dart';
 
 class PianoKeyboard extends StatefulWidget {
-  final List<DetectedChord> availableChords;
   final DetectedChord? selectedChord;
-  final ValueChanged<DetectedChord?>? onChordChange;
   final bool showChordNotes;
   
   const PianoKeyboard({
     super.key,
-    required this.availableChords,
     this.selectedChord,
-    this.onChordChange,
     this.showChordNotes = true,
   });
 
@@ -44,64 +39,19 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Text(
-              'Piano Keyboard',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            
-            // Chord selector dropdown
-            if (widget.availableChords.isNotEmpty) ...[
-              Row(
-                children: [
-                  const Text('Select Chord: ', style: TextStyle(fontWeight: FontWeight.w500)),
-                  const SizedBox(width: 8),
-                  DropdownButton<DetectedChord?>(
-                    value: widget.selectedChord,
-                    hint: const Text('Choose chord'),
-                    onChanged: widget.onChordChange,
-                    items: [
-                      const DropdownMenuItem<DetectedChord?>(
-                        value: null,
-                        child: Text('None'),
-                      ),
-                      ...widget.availableChords.map((chord) {
-                        return DropdownMenuItem<DetectedChord?>(
-                          value: chord,
-                          child: Text(chord.symbol),
-                        );
-                      }),
-                    ],
-                  ),
-                  if (widget.selectedChord != null) ...[
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: () {
-                        ChordPlayer.playChord(widget.selectedChord!.notes);
-                      },
-                      child: const Icon(Icons.play_arrow),
-                    ),
-                  ],
-                ],
-              ),
-            ] else ...[
-              const Text(
-                'No chord progressions available. Analyze a recording first.',
-                style: TextStyle(color: Colors.grey, fontSize: 14),
-              ),
-            ],
-            
             if (widget.showChordNotes && widget.selectedChord != null) ...[
-              const SizedBox(height: 8),
               Text(
-                'Chord notes: ${_getActiveNotes().join(', ')}',
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
+                '${widget.selectedChord!.symbol}: ${_getActiveNotes().join(', ')}',
+                style: const TextStyle(
+                  fontSize: 16, 
+                  fontWeight: FontWeight.w500,
+                  color: Colors.orange,
+                ),
               ),
+              const SizedBox(height: 12),
             ],
-            
-            const SizedBox(height: 16),
             
             // Piano keyboard - Real piano layout
             // White keys: C D E F G A B (7 per octave)
