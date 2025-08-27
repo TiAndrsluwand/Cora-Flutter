@@ -16,26 +16,43 @@ class PitchDetector {
   final double smoothing;
 
   const PitchDetector({
-    this.minVolume = 0.01,
-    this.minConfidence = 0.8,
+    this.minVolume = 0.005,  // Reduced from 0.01 - was too high for quiet melodies
+    this.minConfidence = 0.6,  // Reduced from 0.8 - was too restrictive
     this.windowSize = 2048,
     this.smoothing = 0.8,
   });
 
   List<PitchPoint> analyze(Float32List pcm, double sampleRate) {
-    if (pcm.isEmpty) return const [];
+    if (pcm.isEmpty) {
+      print('PitchDetector: Empty PCM data provided');
+      return const [];
+    }
+    
     final hop = (windowSize / 2).floor();
     final points = <PitchPoint>[];
     double lastFreq = 0;
+    int volumeRejects = 0;
+    int confidenceRejects = 0;
+    int totalWindows = 0;
+
+    print('PitchDetector: Analyzing ${pcm.length} samples at ${sampleRate}Hz (${(pcm.length/sampleRate).toStringAsFixed(2)}s)');
+    print('  Settings: minVolume=${minVolume}, minConfidence=${minConfidence}, windowSize=${windowSize}');
 
     for (int start = 0; start + windowSize <= pcm.length; start += hop) {
+      totalWindows++;
       final window = pcm.sublist(start, start + windowSize);
       final volume = _rms(window);
-      if (volume < minVolume) continue;
+      if (volume < minVolume) {
+        volumeRejects++;
+        continue;
+      }
       final res = _autocorrelation(window, sampleRate);
       var freq = res.$1;
       final conf = res.$2;
-      if (freq <= 0 || conf < minConfidence) continue;
+      if (freq <= 0 || conf < minConfidence) {
+        confidenceRejects++;
+        continue;
+      }
       if (lastFreq > 0) {
         freq = smoothing * lastFreq + (1 - smoothing) * freq;
       }
@@ -49,6 +66,19 @@ class PitchDetector {
         cents: noteCents.$2,
       ));
     }
+    
+    print('PitchDetector: Results - ${points.length} valid points from ${totalWindows} windows');
+    print('  Rejected: ${volumeRejects} volume, ${confidenceRejects} confidence');
+    print('  Success rate: ${((points.length / totalWindows) * 100).toStringAsFixed(1)}%');
+    if (points.isNotEmpty) {
+      final noteFreq = <String, int>{};
+      for (final p in points) {
+        final note = p.note.replaceAll(RegExp(r'\d+'), '');
+        noteFreq[note] = (noteFreq[note] ?? 0) + 1;
+      }
+      print('  Note distribution: ${noteFreq.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
+    }
+    
     return points;
   }
 

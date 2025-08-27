@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
@@ -17,6 +18,7 @@ import '../analysis/chord_engine.dart' as CE;
 import '../analysis/chord_progression_suggestion.dart';
 import '../analysis/detected_chord.dart';
 import '../widgets/piano_keyboard.dart';
+import '../theme/theme_provider.dart';
 
 class RecorderPage extends StatefulWidget {
   const RecorderPage({super.key});
@@ -246,7 +248,26 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cora Recorder')),
+      appBar: AppBar(
+        title: const Text('Cora Recorder'),
+        actions: [
+          Consumer<ThemeProvider>(
+            builder: (context, themeProvider, child) {
+              return IconButton(
+                onPressed: () => themeProvider.toggleTheme(),
+                icon: Icon(
+                  themeProvider.isDarkMode 
+                    ? Icons.wb_sunny 
+                    : Icons.nightlight_round,
+                ),
+                tooltip: themeProvider.isDarkMode 
+                  ? 'Switch to Light Mode' 
+                  : 'Switch to Dark Mode',
+              );
+            },
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           SingleChildScrollView(
@@ -312,9 +333,14 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
                             _suggestions = const [];
                           });
                           try {
+                            print('=== CHORD DETECTION DEBUG START ===');
                             final fileBytes = await File(_path!).readAsBytes();
+                            print('File size: ${fileBytes.length} bytes');
+                            
                             final wav = WavDecoder.decode(fileBytes);
                             if (wav == null) {
+                              print('ERROR: WAV decoding failed - falling back to mock data');
+                              print('This means chord detection will NOT work with real audio!');
                               final result = await AnalysisService.analyzeRecording(_path!);
                               if (!mounted) return;
                               setState(() {
@@ -322,20 +348,39 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
                                 _suggestions = result.suggestions;
                               });
                             } else {
+                              print('✓ WAV decoded successfully: ${wav.samples.length} samples at ${wav.sampleRate}Hz');
                               final detector = const PitchDetector();
+                              print('→ Running pitch detection...');
                               final points = detector.analyze(wav.samples, wav.sampleRate);
+                              print('→ Found ${points.length} pitch points');
+                              if (points.isNotEmpty) {
+                                print('  First few pitches: ${points.take(5).map((p) => '${p.note}@${p.frequencyHz.toStringAsFixed(1)}Hz').join(', ')}');
+                              }
+                              
                               final discrete = PitchToNotes.consolidate(points);
+                              print('→ Consolidated to ${discrete.length} discrete notes');
+                              if (discrete.isNotEmpty) {
+                                print('  Notes: ${discrete.map((d) => d.note).join(', ')}');
+                              }
                               final onlyNames = discrete.map((d) => d.note).toList();
+                              print('→ Running key detection on notes: $onlyNames');
                               final keyRes = KeyDetector.detect(onlyNames);
                               final keyLabel = keyRes.key;
                               final isMinor = keyRes.isMinor;
+                              print('→ Detected key: $keyLabel ${isMinor ? 'minor' : 'major'} (confidence: ${keyRes.score.toStringAsFixed(3)})');
                               final ceNotes = discrete.map((d) => CE.DetectedNote(
                                 note: d.note,
                                 startTime: d.startMs,
                                 duration: d.durationMs,
                               )).toList();
+                              print('→ Running chord suggestion engine...');
                               final engine = const CE.ChordSuggestionEngine();
                               final progs = engine.suggest(ceNotes, keyLabel, isMinor);
+                              print('→ Generated ${progs.length} chord progressions');
+                              if (progs.isNotEmpty) {
+                                print('  Best progression: ${progs.first.name} with ${progs.first.chords.length} chords');
+                                print('  Chords: ${progs.first.chords.map((c) => c.symbol).join(' - ')}');
+                              }
                               if (!mounted) return;
                               final mappedSuggestions = progs.map((p) => ChordProgressionSuggestion(
                                 name: p.name,
@@ -351,8 +396,12 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
                                     ? mappedSuggestions.first.chords.first 
                                     : null;
                               });
+                              print('✓ Analysis complete: ${mappedSuggestions.length} suggestions, key=$_detectedKey');
+                              print('=== CHORD DETECTION DEBUG END ===');
                             }
                           } catch (e) {
+                            print('ERROR during analysis: $e');
+                            print('=== CHORD DETECTION DEBUG END (ERROR) ===');
                             if (!mounted) return;
                           } finally {
                             if (mounted) setState(() => _isAnalyzing = false);
@@ -450,12 +499,14 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
                 const SizedBox(height: 8),
               ],
             ],
-            const SizedBox(height: 24),
-            // Interactive Piano Keyboard
-            PianoKeyboard(
-              selectedChord: _selectedChord,
-              showChordNotes: true,
-            ),
+            // Interactive Piano Keyboard - only show after chord progression analysis
+            if (_suggestions.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              PianoKeyboard(
+                selectedChord: _selectedChord,
+                showChordNotes: true,
+              ),
+            ],
             ],
           ),
         ),

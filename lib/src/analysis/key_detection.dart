@@ -13,28 +13,76 @@ class KeyDetector {
   static const List<String> noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
   static KeyResult detect(List<String> notes) {
-    if (notes.isEmpty) return KeyResult('Unknown', false, 0);
+    if (notes.isEmpty) {
+      print('KeyDetector: No notes provided for key detection');
+      return KeyResult('Unknown', false, 0);
+    }
+    
+    print('KeyDetector: Detecting key from ${notes.length} notes: ${notes.join(', ')}');
+    
     // Build pitch class histogram
     final hist = List<double>.filled(12, 0);
+    int validNotes = 0;
     for (final n in notes) {
       final idx = _noteIndex(n);
-      if (idx >= 0) hist[idx] += 1;
+      if (idx >= 0) {
+        hist[idx] += 1;
+        validNotes++;
+      } else {
+        print('KeyDetector: Warning - could not parse note: $n');
+      }
     }
+    
+    print('KeyDetector: Parsed ${validNotes} valid notes');
+    
     // Normalize
     final sum = hist.fold<double>(0, (s, v) => s + v);
-    if (sum == 0) return KeyResult('Unknown', false, 0);
+    if (sum == 0) {
+      print('KeyDetector: No valid notes for histogram');
+      return KeyResult('Unknown', false, 0);
+    }
     for (int i = 0; i < 12; i++) { hist[i] /= sum; }
 
+    // Show histogram
+    final histStr = hist.asMap().entries
+        .where((e) => e.value > 0)
+        .map((e) => '${noteNames[e.key]}:${(e.value*100).toStringAsFixed(1)}%')
+        .join(', ');
+    print('KeyDetector: Pitch class distribution - $histStr');
+
     double bestScore = -1e9; String bestKey = 'C'; bool bestMinor = false;
+    final keyScores = <String, double>{};
 
     for (int tonic = 0; tonic < 12; tonic++) {
       final shifted = List<double>.generate(12, (i) => hist[(i + tonic) % 12]);
       final mjScore = _correlation(shifted, major);
-      if (mjScore > bestScore) { bestScore = mjScore; bestKey = noteNames[tonic]; bestMinor = false; }
       final mnScore = _correlation(shifted, minor);
-      if (mnScore > bestScore) { bestScore = mnScore; bestKey = noteNames[tonic]; bestMinor = true; }
+      
+      keyScores['${noteNames[tonic]} major'] = mjScore;
+      keyScores['${noteNames[tonic]} minor'] = mnScore;
+      
+      if (mjScore > bestScore) { 
+        bestScore = mjScore; 
+        bestKey = noteNames[tonic]; 
+        bestMinor = false; 
+      }
+      if (mnScore > bestScore) { 
+        bestScore = mnScore; 
+        bestKey = noteNames[tonic]; 
+        bestMinor = true; 
+      }
     }
 
+    // Show top candidates
+    final sortedKeys = keyScores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    print('KeyDetector: Top key candidates:');
+    for (int i = 0; i < 5 && i < sortedKeys.length; i++) {
+      final entry = sortedKeys[i];
+      print('  ${i+1}. ${entry.key}: ${entry.value.toStringAsFixed(3)}');
+    }
+
+    print('KeyDetector: Selected ${bestKey} ${bestMinor ? 'minor' : 'major'} (score: ${bestScore.toStringAsFixed(3)})');
     return KeyResult(bestKey, bestMinor, bestScore);
   }
 
