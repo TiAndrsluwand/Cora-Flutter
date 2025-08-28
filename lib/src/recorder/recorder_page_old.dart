@@ -18,6 +18,7 @@ import '../analysis/chord_engine.dart' as CE;
 import '../analysis/chord_progression_suggestion.dart';
 import '../analysis/detected_chord.dart';
 import '../widgets/piano_keyboard.dart';
+// import '../widgets/metronome_controls.dart'; // Removed - using ExpansionTile instead
 import '../sound/metronome_player.dart';
 import '../theme/theme_provider.dart';
 
@@ -60,9 +61,6 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   int _currentBeat = 0;
   int _totalBeats = 4;
   bool _waitingForCountIn = false;
-  
-  // Continuous metronome state
-  bool _isPreviewingMetronome = false; // Keeping same variable name for compatibility
 
   @override
   void initState() {
@@ -145,8 +143,14 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     try {
       print('=== STARTING RECORDING WORKFLOW ===');
       
-      // CLEAR PREVIOUS ANALYSIS RESULTS AND STATE
-      _clearAnalysisState();
+      // Pause any ongoing chord playback to avoid audio mix issues
+      try { 
+        await _player.stop(); 
+        await ChordPlayer.stopAnyPlayback();
+        print('Stopped existing audio playback');
+      } catch (e) {
+        print('Warning: Error stopping audio playback: $e');
+      }
 
       print('Requesting microphone permission...');
       final mic = await Permission.microphone.request();
@@ -386,32 +390,6 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     );
   }
 
-  /// Clears all previous analysis results and frees memory
-  /// Called when starting a new recording to ensure clean state
-  void _clearAnalysisState() {
-    print('🧹 Clearing analysis state and freeing memory');
-    setState(() {
-      // Clear all analysis results
-      _detectedKey = null;
-      _suggestions = const [];
-      _selectedChord = null;
-      
-      // Clear previous recording metadata
-      _lastRmsDb = null;
-      _playbackDuration = null;
-      _playbackPosition = Duration.zero;
-      _isPlayingBack = false;
-      
-      // Reset UI flags
-      _isAnalyzing = false;
-    });
-    
-    // Stop any ongoing playback and continuous metronome
-    _player.stop().catchError((e) => print('Warning: Error stopping player: $e'));
-    ChordPlayer.stopAnyPlayback().catchError((e) => print('Warning: Error stopping chord playback: $e'));
-    _stopContinuousMetronome().catchError((e) => print('Warning: Error stopping continuous metronome: $e'));
-  }
-
   // Helper methods for new UI design
   Color _getRecordButtonColor() {
     if (_waitingForCountIn) return Colors.amber;
@@ -513,46 +491,12 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
                   )).toList(),
                   onChanged: (ts) {
                     if (ts != null) {
-                      // setTimeSignature now handles real-time updates automatically when in continuous mode
                       MetronomePlayer.setTimeSignature(ts);
-                      
                       setState(() => _totalBeats = ts.numerator);
                     }
                   },
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-            // Continuous Metronome Button
-            Center(
-              child: _isPreviewingMetronome
-                  ? ElevatedButton.icon(
-                      onPressed: () => _stopContinuousMetronome(),
-                      icon: const Icon(Icons.stop, size: 18),
-                      label: const Text(
-                        'Stop Metronome',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        elevation: 3,
-                      ),
-                    )
-                  : OutlinedButton.icon(
-                      onPressed: () => _startContinuousMetronome(),
-                      icon: const Icon(Icons.play_arrow, size: 18),
-                      label: const Text(
-                        'Start Metronome',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.blue,
-                        side: const BorderSide(color: Colors.blue, width: 1.5),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      ),
-                    ),
             ),
             const SizedBox(height: 16),
             // Info text
@@ -587,59 +531,8 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
 
   void _updateBpm(int bpm) {
     final clampedBpm = bpm.clamp(60, 200);
-    
-    // setBpm now handles real-time updates automatically when in continuous mode
     MetronomePlayer.setBpm(clampedBpm);
-    
     setState(() {}); // Trigger UI update
-  }
-
-  /// Starts continuous metronome with real-time adjustability
-  void _startContinuousMetronome() async {
-    try {
-      print('🎵 Starting continuous metronome - BPM: ${MetronomePlayer.bpm}, Time: ${MetronomePlayer.timeSignature}');
-      
-      setState(() {
-        _isPreviewingMetronome = true;
-      });
-      
-      // Start continuous metronome playback
-      await MetronomePlayer.startContinuous();
-      
-      print('✓ Continuous metronome started successfully');
-    } catch (e) {
-      print('ERROR starting continuous metronome: $e');
-      setState(() {
-        _isPreviewingMetronome = false;
-      });
-      _showErrorSnackBar('Failed to start metronome: $e');
-    }
-  }
-
-  /// Stops continuous metronome
-  Future<void> _stopContinuousMetronome() async {
-    try {
-      print('🛑 Stopping continuous metronome');
-      
-      // Stop metronome playback
-      await MetronomePlayer.stopContinuous();
-      
-      if (mounted) {
-        setState(() {
-          _isPreviewingMetronome = false;
-        });
-      }
-      
-      print('✓ Continuous metronome stopped successfully');
-    } catch (e) {
-      print('ERROR stopping continuous metronome: $e');
-      // Still update UI state even if stop failed
-      if (mounted) {
-        setState(() {
-          _isPreviewingMetronome = false;
-        });
-      }
-    }
   }
 
   Widget _buildCurrentStateContent() {
@@ -742,8 +635,37 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       return _buildPlaybackContent();
     }
 
-    // Default empty state - return empty container for clean interface
-    return const SizedBox.shrink();
+    // Default empty state
+    return Card(
+      key: const ValueKey('empty'),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(Icons.mic, size: 48, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text(
+              'Ready to Record',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Press the record button above to start',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildPlaybackContent() {
@@ -1087,141 +1009,351 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
           SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Metronome Controls
+            MetronomeControls(
+              onEnabledChanged: (enabled) {
+                setState(() => _useMetronome = enabled);
+              },
+              onTimeSignatureChanged: (timeSignature) {
+                setState(() => _totalBeats = timeSignature.numerator);
+              },
+            ),
+            const SizedBox(height: 16),
+            Row(
               children: [
-                // Recording Controls Card
-                Card(
-                  elevation: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Metronome Settings with ExpansionTile
-                        ExpansionTile(
-                          leading: Icon(
-                            Icons.timer,
-                            color: _useMetronome ? Colors.green : Colors.grey,
-                          ),
-                          title: Row(
-                            children: [
-                              Text(
-                                'Metronome Settings',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: _useMetronome ? null : Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Switch(
-                                value: _useMetronome,
-                                onChanged: (enabled) {
-                                  setState(() => _useMetronome = enabled);
-                                  MetronomePlayer.setEnabled(enabled);
-                                },
-                                activeColor: Colors.green,
-                              ),
-                            ],
-                          ),
-                          children: [
-                            if (_useMetronome) ..._buildMetronomeControls(),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Main Recording Button with AnimatedContainer
-                        Center(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            width: (_isRecording || _waitingForCountIn) ? 160 : 140,
-                            height: (_isRecording || _waitingForCountIn) ? 80 : 60,
-                            child: ElevatedButton(
-                              onPressed: _toggle,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _getRecordButtonColor(),
-                                foregroundColor: _getRecordButtonTextColor(),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                                elevation: (_isRecording || _waitingForCountIn) ? 8 : 4,
-                              ),
-                              child: Text(
-                                _getRecordButtonText(),
-                                style: TextStyle(
-                                  fontSize: (_isRecording || _waitingForCountIn) ? 18 : 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        // Status Text
-                        Center(
-                          child: Text(
-                            _getStatusText(),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w500,
-                              fontSize: 14,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                    ),
+                ElevatedButton(
+                  onPressed: _toggle,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: (_isRecording || _waitingForCountIn) 
+                        ? Colors.red 
+                        : null,
+                    foregroundColor: (_isRecording || _waitingForCountIn) 
+                        ? Colors.white 
+                        : null,
+                  ),
+                  child: Text(
+                    _waitingForCountIn 
+                        ? 'CANCEL' 
+                        : (_isRecording ? 'STOP' : 'RECORD')
                   ),
                 ),
-                const SizedBox(height: 16),
-                // State-based Content with AnimatedSwitcher
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  child: _buildCurrentStateContent(),
+                const SizedBox(width: 12),
+                Text(
+                  _waitingForCountIn
+                      ? 'Get ready... Count-in starting!'
+                      : (_isRecording
+                          ? 'Recording... ${_seconds}s / ${_maxSeconds}s max'
+                          : 'You can record up to ${_maxSeconds} seconds'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-          ),
-          // Loading overlay during analysis
-          if (_isAnalyzing)
-            Container(
-              color: Colors.black54,
-              child: Center(
+            const SizedBox(height: 12),
+            // Count-in indicator (simple text to avoid widget rebuild issues)
+            if (_recordingPhase != RecordingPhase.idle) ...[
+              const SizedBox(height: 16),
+              Center(
                 child: Card(
-                  elevation: 8,
+                  color: _recordingPhase == RecordingPhase.countIn 
+                      ? Colors.amber.shade100 
+                      : Colors.red.shade100,
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(16),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const SizedBox(
-                          width: 60,
-                          height: 60,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 4,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Analyzing Melody...',
+                        Text(
+                          _recordingPhase == RecordingPhase.countIn
+                              ? '🎵 Count-in: $_currentBeat/$_totalBeats'
+                              : '🔴 Recording!',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
+                            color: _recordingPhase == RecordingPhase.countIn
+                                ? Colors.amber.shade700
+                                : Colors.red.shade700,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Detecting pitch, key, and chord progressions',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
+                        if (_recordingPhase == RecordingPhase.countIn) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Recording will start after count-in',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
-                          textAlign: TextAlign.center,
-                        ),
+                        ],
                       ],
                     ),
                   ),
                 ),
               ),
+            ],
+            
+            if (_isRecording && _recordingPhase == RecordingPhase.recording) ...[
+              LinearProgressIndicator(value: _seconds / _maxSeconds),
+              const SizedBox(height: 16),
+              // Animated musical note during recording
+              Center(
+                child: AnimatedBuilder(
+                  animation: _noteAnimation,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(0, _noteAnimation.value),
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.music_note,
+                          size: 40,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            // Analysis actions  
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: (_path != null && !_isAnalyzing)
+                      ? () async {
+                          if (_path == null) return;
+                          setState(() {
+                            _isAnalyzing = true;
+                            _detectedKey = null;
+                            _suggestions = const [];
+                          });
+                          try {
+                            print('=== CHORD DETECTION DEBUG START ===');
+                            final fileBytes = await File(_path!).readAsBytes();
+                            print('File size: ${fileBytes.length} bytes');
+                            
+                            final wav = WavDecoder.decode(fileBytes);
+                            if (wav == null) {
+                              print('ERROR: WAV decoding failed - falling back to mock data');
+                              print('This means chord detection will NOT work with real audio!');
+                              final result = await AnalysisService.analyzeRecording(_path!);
+                              if (!mounted) return;
+                              setState(() {
+                                _detectedKey = result.detectedKey;
+                                _suggestions = result.suggestions;
+                              });
+                            } else {
+                              print('✓ WAV decoded successfully: ${wav.samples.length} samples at ${wav.sampleRate}Hz');
+                              final detector = const PitchDetector();
+                              print('→ Running pitch detection...');
+                              final points = detector.analyze(wav.samples, wav.sampleRate);
+                              print('→ Found ${points.length} pitch points');
+                              if (points.isNotEmpty) {
+                                print('  First few pitches: ${points.take(5).map((p) => '${p.note}@${p.frequencyHz.toStringAsFixed(1)}Hz').join(', ')}');
+                              }
+                              
+                              final discrete = PitchToNotes.consolidate(points);
+                              print('→ Consolidated to ${discrete.length} discrete notes');
+                              if (discrete.isNotEmpty) {
+                                print('  Notes: ${discrete.map((d) => d.note).join(', ')}');
+                              }
+                              final onlyNames = discrete.map((d) => d.note).toList();
+                              print('→ Running key detection on notes: $onlyNames');
+                              final keyRes = KeyDetector.detect(onlyNames);
+                              final keyLabel = keyRes.key;
+                              final isMinor = keyRes.isMinor;
+                              print('→ Detected key: $keyLabel ${isMinor ? 'minor' : 'major'} (confidence: ${keyRes.score.toStringAsFixed(3)})');
+                              final ceNotes = discrete.map((d) => CE.DetectedNote(
+                                note: d.note,
+                                startTime: d.startMs,
+                                duration: d.durationMs,
+                              )).toList();
+                              print('→ Running chord suggestion engine...');
+                              final engine = const CE.ChordSuggestionEngine();
+                              final progs = engine.suggest(ceNotes, keyLabel, isMinor);
+                              print('→ Generated ${progs.length} chord progressions');
+                              if (progs.isNotEmpty) {
+                                print('  Best progression: ${progs.first.name} with ${progs.first.chords.length} chords');
+                                print('  Chords: ${progs.first.chords.map((c) => c.symbol).join(' - ')}');
+                              }
+                              if (!mounted) return;
+                              final mappedSuggestions = progs.map((p) => ChordProgressionSuggestion(
+                                name: p.name,
+                                key: "${p.key} ${p.scale == 'NATURAL_MINOR' ? 'minor' : 'major'}",
+                                chords: p.chords.map((c) => DetectedChord(symbol: c.symbol, notes: _voiceChord(c.notes))).toList(),
+                              )).toList();
+                              
+                              setState(() {
+                                _detectedKey = "${keyLabel} ${isMinor ? 'minor' : 'major'}";
+                                _suggestions = mappedSuggestions;
+                                // Auto-select first chord if available
+                                _selectedChord = mappedSuggestions.isNotEmpty && mappedSuggestions.first.chords.isNotEmpty 
+                                    ? mappedSuggestions.first.chords.first 
+                                    : null;
+                              });
+                              print('✓ Analysis complete: ${mappedSuggestions.length} suggestions, key=$_detectedKey');
+                              print('=== CHORD DETECTION DEBUG END ===');
+                            }
+                          } catch (e) {
+                            print('ERROR during analysis: $e');
+                            print('=== CHORD DETECTION DEBUG END (ERROR) ===');
+                            if (!mounted) return;
+                          } finally {
+                            if (mounted) setState(() => _isAnalyzing = false);
+                          }
+                        }
+                      : null,
+                  child: const Text('Analyze Recording'),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _detectedKey = null;
+                      _suggestions = const [];
+                      _selectedChord = null;
+                    });
+                  },
+                  child: const Text('Clear Results'),
+                ),
+              ],
             ),
+            const SizedBox(height: 16),
+            if (_path != null) ...[
+              Row(
+                children: [
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (_path == null) return;
+                      try {
+                        await _player.stop();
+                        await _player.setVolume(1.0);
+                        if (Platform.isAndroid || Platform.isIOS) {
+                          await _player.setFilePath(_path!);
+                        } else {
+                          await _player.setUrl(Uri.file(_path!).toString());
+                        }
+                        await _player.play();
+                      } catch (_) {}
+                    },
+                    child: const Text('Play Recording'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_lastRmsDb != null)
+                Text('Recording level: ${_lastRmsDb!.toStringAsFixed(1)} dBFS', style: const TextStyle(fontSize: 12)),
+              if (_playbackDuration != null && _playbackDuration!.inMilliseconds > 0) ...[
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  value: (_playbackPosition.inMilliseconds.clamp(0, _playbackDuration!.inMilliseconds)) / _playbackDuration!.inMilliseconds,
+                ),
+                const SizedBox(height: 8),
+                Text('${_formatTime(_playbackPosition)} / ${_formatTime(_playbackDuration!)}${_isPlayingBack ? '  (playing)' : ''}', style: const TextStyle(fontSize: 12)),
+              ],
+            ],
+            // Results section
+            if (_detectedKey != null || _suggestions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              if (_detectedKey != null)
+                Text('Detected key: $_detectedKey', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (_suggestions.isNotEmpty) ...[
+                const Text('Recommended Chord Progression:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                for (final prog in _suggestions) ...[
+                  Text('${prog.name} in ${prog.key}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final chord in prog.chords)
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedChord = chord;
+                            });
+                            ChordPlayer.playChord(chord.notes);
+                          },
+                          style: _selectedChord?.symbol == chord.symbol
+                              ? ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange,
+                                  foregroundColor: Colors.white,
+                                )
+                              : null,
+                          child: Text(chord.symbol),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ] else if (_detectedKey != null) ...[
+                const Text('No chord progression suggestions found for this recording. Try recording a melody with clearer notes.', 
+                  style: TextStyle(color: Colors.orange, fontSize: 14)),
+                const SizedBox(height: 8),
+              ],
+            ],
+            // Interactive Piano Keyboard - only show after chord progression analysis
+            if (_suggestions.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              PianoKeyboard(
+                selectedChord: _selectedChord,
+                showChordNotes: true,
+              ),
+            ],
+            ],
+          ),
+        ),
+        // Loading overlay during analysis
+        if (_isAnalyzing)
+          Container(
+            color: Colors.black54,
+            child: Center(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 60,
+                        height: 60,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 4,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Analyzing Melody...',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Detecting pitch, key, and chord progressions',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -60,30 +60,47 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
               const SizedBox(height: 12),
             ],
 
-            // Piano keyboard - Real piano layout
-            // White keys: C D E F G A B (7 per octave)
-            // Black keys: C# D# _ F# G# A# _ (5 per octave, gaps between E-F and B-C)
-            SizedBox(
-              height: 80,
-              child: Stack(
-                children: [
-                  // White keys (2 octaves)
-                  Row(
+            // Piano keyboard - Responsive layout with LayoutBuilder
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Calculate responsive key width based on available space
+                const totalWhiteKeys = 14; // 2 octaves × 7 keys
+                const keyMargin = 0.5;
+                final availableWidth = constraints.maxWidth;
+                final whiteKeyWidth = (availableWidth - (totalWhiteKeys * keyMargin)) / totalWhiteKeys;
+                
+                return SizedBox(
+                  height: 80,
+                  width: availableWidth,
+                  child: Stack(
+                    clipBehavior: Clip.hardEdge, // Prevent overflow
                     children: [
+                      // White keys (2 octaves)
+                      Row(
+                        children: [
+                          for (int octave = 0; octave < 2; octave++)
+                            for (int i = 0; i < whiteKeys.length; i++)
+                              _buildWhiteKey(
+                                '${whiteKeys[i]}${octave + 4}', 
+                                whiteKeys[i], 
+                                whiteKeyWidth,
+                              ),
+                        ],
+                      ),
+                      // Black keys (2 octaves) - positioned responsively
                       for (int octave = 0; octave < 2; octave++)
-                        for (int i = 0; i < whiteKeys.length; i++)
-                          _buildWhiteKey(
-                              '${whiteKeys[i]}${octave + 4}', whiteKeys[i]),
+                        for (int i = 0; i < blackKeys.length; i++)
+                          if (blackKeys[i].isNotEmpty)
+                            _buildBlackKey(
+                              '${blackKeys[i]}${octave + 4}',
+                              blackKeys[i], 
+                              octave * 7 + i,
+                              whiteKeyWidth,
+                            ),
                     ],
                   ),
-                  // Black keys (2 octaves) - positioned correctly between white keys
-                  for (int octave = 0; octave < 2; octave++)
-                    for (int i = 0; i < blackKeys.length; i++)
-                      if (blackKeys[i].isNotEmpty)
-                        _buildBlackKey('${blackKeys[i]}${octave + 4}',
-                            blackKeys[i], octave * 7 + i),
-                ],
-              ),
+                );
+              },
             ),
           ],
         ),
@@ -91,10 +108,14 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
     );
   }
 
-  Widget _buildWhiteKey(String keyName, String note) {
+  Widget _buildWhiteKey(String keyName, String note, double keyWidth) {
     final isActive = _isKeyActive(note);
+    // Scale indicator dot and text size based on key width
+    final dotSize = (keyWidth * 0.3).clamp(6.0, 10.0);
+    final fontSize = (keyWidth * 0.3).clamp(6.0, 10.0);
+    
     return Container(
-      width: 24,
+      width: keyWidth,
       height: 80,
       margin: const EdgeInsets.only(right: 0.5),
       decoration: BoxDecoration(
@@ -123,8 +144,8 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
         children: [
           if (isActive)
             Container(
-              width: 8,
-              height: 8,
+              width: dotSize,
+              height: dotSize,
               margin: const EdgeInsets.only(bottom: 4),
               decoration: BoxDecoration(
                 color: highlightOrange,
@@ -137,7 +158,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
             child: Text(
               note,
               style: TextStyle(
-                fontSize: 8,
+                fontSize: fontSize,
                 color: isActive
                     ? highlightOrange.withOpacity(0.9)
                     : Colors.grey.shade600,
@@ -150,33 +171,39 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
     );
   }
 
-  Widget _buildBlackKey(String keyName, String note, int globalPosition) {
+  Widget _buildBlackKey(String keyName, String note, int globalPosition, double whiteKeyWidth) {
     final isActive = _isKeyActive(note);
 
-    // Calculate correct positioning based on white key layout
+    // Calculate correct positioning based on responsive white key layout
     // In each octave: C# is between C-D, D# between D-E, F# between F-G, G# between G-A, A# between A-B
     final octave = globalPosition ~/ 7;
     final positionInOctave = globalPosition % 7;
 
     late double leftOffset;
-    const whiteKeyWidth = 24.5; // 24px + 0.5px margin
-    final octaveOffset = octave * 7 * whiteKeyWidth;
+    final whiteKeyWidthWithMargin = whiteKeyWidth + 0.5; // Include margin
+    final octaveOffset = octave * 7 * whiteKeyWidthWithMargin;
+    
+    // Scale black key dimensions based on white key size
+    final blackKeyWidth = (whiteKeyWidth * 0.65).clamp(10.0, 18.0);
+    final blackKeyHeight = 50.0;
+    final dotSize = (blackKeyWidth * 0.35).clamp(4.0, 8.0);
+    final fontSize = (blackKeyWidth * 0.35).clamp(5.0, 8.0);
 
     switch (positionInOctave) {
       case 0: // C# - between C(0) and D(1)
-        leftOffset = octaveOffset + (0.7 * whiteKeyWidth);
+        leftOffset = octaveOffset + (0.7 * whiteKeyWidthWithMargin);
         break;
       case 1: // D# - between D(1) and E(2)
-        leftOffset = octaveOffset + (1.7 * whiteKeyWidth);
+        leftOffset = octaveOffset + (1.7 * whiteKeyWidthWithMargin);
         break;
       case 3: // F# - between F(3) and G(4)
-        leftOffset = octaveOffset + (3.7 * whiteKeyWidth);
+        leftOffset = octaveOffset + (3.7 * whiteKeyWidthWithMargin);
         break;
       case 4: // G# - between G(4) and A(5)
-        leftOffset = octaveOffset + (4.7 * whiteKeyWidth);
+        leftOffset = octaveOffset + (4.7 * whiteKeyWidthWithMargin);
         break;
       case 5: // A# - between A(5) and B(6)
-        leftOffset = octaveOffset + (5.7 * whiteKeyWidth);
+        leftOffset = octaveOffset + (5.7 * whiteKeyWidthWithMargin);
         break;
       default:
         leftOffset = 0;
@@ -185,8 +212,8 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
     return Positioned(
       left: leftOffset,
       child: Container(
-        width: 16,
-        height: 50,
+        width: blackKeyWidth,
+        height: blackKeyHeight,
         decoration: BoxDecoration(
           color: isActive
               ? highlightOrange.withOpacity(0.8)
@@ -215,8 +242,8 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
           children: [
             if (isActive)
               Container(
-                width: 6,
-                height: 6,
+                width: dotSize,
+                height: dotSize,
                 margin: const EdgeInsets.only(bottom: 3),
                 decoration: BoxDecoration(
                   color: highlightOrange,
@@ -230,7 +257,7 @@ class _PianoKeyboardState extends State<PianoKeyboard> {
               child: Text(
                 note.replaceAll('#', '♯'),
                 style: TextStyle(
-                  fontSize: 6,
+                  fontSize: fontSize,
                   color: isActive ? Colors.white : Colors.white70,
                   fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                 ),

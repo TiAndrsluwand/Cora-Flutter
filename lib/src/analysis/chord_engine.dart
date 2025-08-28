@@ -71,8 +71,9 @@ class ChordSuggestionEngine {
       print('ChordEngine: Key detection failed - cannot suggest chords');
       return [];
     }
-    
-    print('ChordEngine: Generating chord suggestions for ${melody.length} notes in ${keyLabel} ${isMinor ? 'minor' : 'major'}');
+
+    print(
+        'ChordEngine: Generating chord suggestions for ${melody.length} notes in $keyLabel ${isMinor ? 'minor' : 'major'}');
     final keyRoot = isMinor ? keyLabel.replaceAll('m', '') : keyLabel;
     final scaleType =
         isMinor ? MT.SCALE_TYPES.NATURAL_MINOR : MT.SCALE_TYPES.MAJOR;
@@ -84,34 +85,38 @@ class ChordSuggestionEngine {
 
     // If melody segmentation fails, create a simple single segment
     if (segments.isEmpty && melody.isNotEmpty) {
-      print('ChordEngine: Segmentation failed, using entire melody as single segment');
+      print(
+          'ChordEngine: Segmentation failed, using entire melody as single segment');
       segments.add(melody);
     }
-    
+
     for (int i = 0; i < segments.length; i++) {
       final seg = segments[i];
-      print('  Segment ${i+1}: ${seg.map((n) => n.note).join(', ')} (${seg.length} notes, ${seg.fold(0, (sum, n) => sum + n.duration)}ms total)');
+      print(
+          '  Segment ${i + 1}: ${seg.map((n) => n.note).join(', ')} (${seg.length} notes, ${seg.fold(0, (sum, n) => sum + n.duration)}ms total)');
     }
 
     final progs = _generateProgressions(segments, keyRoot, scaleType, scale);
     print('ChordEngine: Generated ${progs.length} progression candidates');
-    
+
     progs.sort((a, b) => b.score.compareTo(a.score));
-    
+
     if (progs.isNotEmpty) {
-      print('ChordEngine: Best progression: "${progs.first.name}" (score: ${progs.first.score.toStringAsFixed(3)})');
+      print(
+          'ChordEngine: Best progression: "${progs.first.name}" (score: ${progs.first.score.toStringAsFixed(3)})');
       print('  Chords: ${progs.first.chords.map((c) => c.symbol).join(' - ')}');
-      
+
       // Show all candidates with scores
       print('ChordEngine: All candidates:');
       for (int i = 0; i < progs.length && i < 5; i++) {
         final prog = progs[i];
-        print('  ${i+1}. ${prog.name}: ${prog.chords.map((c) => c.symbol).join(' - ')} (${prog.score.toStringAsFixed(3)})');
+        print(
+            '  ${i + 1}. ${prog.name}: ${prog.chords.map((c) => c.symbol).join(' - ')} (${prog.score.toStringAsFixed(3)})');
       }
     } else {
       print('ChordEngine: No valid progressions generated');
     }
-    
+
     // Always return the single most accurate result
     return progs.isEmpty ? [] : [progs.first];
   }
@@ -305,8 +310,9 @@ class ChordSuggestionEngine {
         noteScore *= MT.isNoteInChord(norm, chordNotes) ? 1.4 : 0.7;
       }
 
-      if (n.duration > 400)
+      if (n.duration > 400) {
         noteScore += 0.4; // sustained tones are harmonically salient
+      }
       weight += noteScore * dur;
     }
     if (totalDur <= 0) return 0;

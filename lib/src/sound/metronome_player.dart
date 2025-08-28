@@ -16,12 +16,12 @@ enum RecordingPhase {
 class TimeSignature {
   final int numerator;
   final int denominator;
-  
+
   const TimeSignature(this.numerator, this.denominator);
-  
+
   @override
   String toString() => '$numerator/$denominator';
-  
+
   static const common = [
     TimeSignature(4, 4),
     TimeSignature(3, 4),
@@ -38,11 +38,11 @@ class MetronomePlayer {
   static Timer? _metronomeTimer;
   static int _currentBeat = 0;
   static RecordingPhase _phase = RecordingPhase.idle;
-  
+
   // Pre-generated audio files for metronome beats
   static String? _strongBeatPath;
   static String? _weakBeatPath;
-  
+
   // Metronome settings
   static int _bpm = 120;
   static TimeSignature _timeSignature = const TimeSignature(4, 4);
@@ -50,16 +50,20 @@ class MetronomePlayer {
   static bool _continueMetronomeDuringRecording = true;
   static double _volume = 0.8;
   
+  // Continuous mode flag
+  static bool _isInContinuousMode = false;
+
   // Beat callbacks
-  static Function(int beat, int totalBeats, RecordingPhase phase)? _onBeatCallback;
+  static Function(int beat, int totalBeats, RecordingPhase phase)?
+      _onBeatCallback;
   static Function()? _onCountInComplete;
-  
+
   static Future<void> ensureLoaded(BuildContext context) async {
     if (_initialized) return;
     try {
       // Pre-generate metronome sound files and load into players
       await _generateAndLoadMetronomeSounds();
-      
+
       _initialized = true;
       print('MetronomePlayer: Initialized successfully');
     } catch (e) {
@@ -67,29 +71,29 @@ class MetronomePlayer {
       _initialized = false;
     }
   }
-  
+
   static Future<void> _generateAndLoadMetronomeSounds() async {
     try {
       final tempDir = await getTemporaryDirectory();
-      
+
       // Generate strong beat sound (1200Hz)
       final strongBeatData = _synthesizeClickWav(1200.0, durationMs: 100);
       final strongBeatFile = File('${tempDir.path}/metronome_strong.wav');
       await strongBeatFile.writeAsBytes(strongBeatData);
       _strongBeatPath = strongBeatFile.path;
-      
+
       // Generate weak beat sound (800Hz)
       final weakBeatData = _synthesizeClickWav(800.0, durationMs: 100);
       final weakBeatFile = File('${tempDir.path}/metronome_weak.wav');
       await weakBeatFile.writeAsBytes(weakBeatData);
       _weakBeatPath = weakBeatFile.path;
-      
+
       // Load audio files into players ONCE (this creates ExoPlayerImpl instances)
       await _strongBeatPlayer.setFilePath(_strongBeatPath!);
       await _strongBeatPlayer.setVolume(_volume);
       await _weakBeatPlayer.setFilePath(_weakBeatPath!);
       await _weakBeatPlayer.setVolume(_volume);
-      
+
       print('MetronomePlayer: Pre-generated and loaded metronome sounds');
     } catch (e) {
       print('MetronomePlayer: Error generating sounds: $e');
@@ -100,41 +104,70 @@ class MetronomePlayer {
   static int get bpm => _bpm;
   static TimeSignature get timeSignature => _timeSignature;
   static bool get enabled => _enabled;
-  static bool get continueMetronomeDuringRecording => _continueMetronomeDuringRecording;
+  static bool get continueMetronomeDuringRecording =>
+      _continueMetronomeDuringRecording;
   static double get volume => _volume;
   static RecordingPhase get currentPhase => _phase;
   static int get currentBeat => _currentBeat;
-  
+
   // Setters for metronome settings
   static void setBpm(int newBpm) {
-    _bpm = newBpm.clamp(60, 200);
+    final clampedBpm = newBpm.clamp(60, 200);
+    final oldBpm = _bpm;
+    _bpm = clampedBpm;
+    
+    // Auto-update real-time if in continuous mode
+    if (_initialized && _isInContinuousMode && oldBpm != _bpm) {
+      print('MetronomePlayer: Auto real-time BPM change via setBpm: $oldBpm -> $_bpm');
+      
+      // Restart timer with new interval for seamless tempo change
+      if (_metronomeTimer != null) {
+        _metronomeTimer?.cancel();
+        _startMetronomeTimer();
+      }
+    }
   }
-  
+
   static void setTimeSignature(TimeSignature newTimeSignature) {
+    final oldTimeSignature = _timeSignature;
     _timeSignature = newTimeSignature;
+    
+    // Auto-update real-time if in continuous mode
+    if (_initialized && _isInContinuousMode && oldTimeSignature != _timeSignature) {
+      print('MetronomePlayer: Auto real-time time signature change via setTimeSignature: $oldTimeSignature -> $_timeSignature');
+      
+      // Reset beat counter for new time signature pattern
+      _currentBeat = 0;
+      
+      // Notify UI of time signature change
+      if (_onBeatCallback != null) {
+        _onBeatCallback!(_currentBeat + 1, _timeSignature.numerator, RecordingPhase.idle);
+      }
+    }
   }
-  
+
   static void setEnabled(bool enabled) {
     _enabled = enabled;
     if (!enabled && _metronomeTimer != null) {
       stopMetronome();
     }
   }
-  
+
   static void setContinueMetronomeDuringRecording(bool shouldContinue) {
     _continueMetronomeDuringRecording = shouldContinue;
   }
-  
+
   static void setVolume(double newVolume) {
     _volume = newVolume.clamp(0.0, 1.0);
     _strongBeatPlayer.setVolume(_volume);
     _weakBeatPlayer.setVolume(_volume);
   }
-  
-  static void setBeatCallback(Function(int beat, int totalBeats, RecordingPhase phase)? callback) {
+
+  static void setBeatCallback(
+      Function(int beat, int totalBeats, RecordingPhase phase)? callback) {
     _onBeatCallback = callback;
   }
-  
+
   static void setCountInCompleteCallback(Function()? callback) {
     _onCountInComplete = callback;
   }
@@ -148,15 +181,15 @@ class MetronomePlayer {
       }
       return;
     }
-    
+
     print('MetronomePlayer: Starting recording with count-in');
     _phase = RecordingPhase.countIn;
     _currentBeat = 0;
-    
+
     // Start metronome for count-in measure
     await _startMetronome();
   }
-  
+
   /// Stops metronome completely
   static Future<void> stopMetronome() async {
     print('MetronomePlayer: Stopping metronome');
@@ -164,7 +197,7 @@ class MetronomePlayer {
     _metronomeTimer = null;
     _phase = RecordingPhase.idle;
     _currentBeat = 0;
-    
+
     try {
       await _strongBeatPlayer.stop();
       await _weakBeatPlayer.stop();
@@ -172,28 +205,68 @@ class MetronomePlayer {
       print('MetronomePlayer: Error stopping players: $e');
     }
   }
-  
+
+  /// Starts continuous metronome for real-time adjustability
+  static Future<void> startContinuous() async {
+    if (!_initialized) return;
+    
+    print('MetronomePlayer: Starting continuous mode - BPM: $_bpm, Time: $_timeSignature');
+    _currentBeat = 0;
+    _isInContinuousMode = true;
+    
+    // Start continuous metronome playback
+    await _startMetronome();
+  }
+
+  /// Stops continuous metronome
+  static Future<void> stopContinuous() async {
+    print('MetronomePlayer: Stopping continuous mode');
+    _isInContinuousMode = false;
+    _metronomeTimer?.cancel();
+    _metronomeTimer = null;
+    _currentBeat = 0;
+
+    try {
+      await _strongBeatPlayer.stop();
+      await _weakBeatPlayer.stop();
+    } catch (e) {
+      print('MetronomePlayer: Error stopping continuous players: $e');
+    }
+  }
+
+  // Note: Real-time updates are now handled automatically by setBpm() and setTimeSignature() 
+  // when in continuous mode, so separate update methods are no longer needed.
+
   /// Internal method to start the metronome timer
   static Future<void> _startMetronome() async {
-    _metronomeTimer?.cancel();
-    
-    final beatDurationMs = (60000 / _bpm).round();
-    print('MetronomePlayer: Starting metronome at ${_bpm} BPM (${beatDurationMs}ms per beat)');
-    
     // Play first beat immediately
     await _playBeat(isStrongBeat: true);
     _currentBeat = 1;
     _notifyBeat();
-    
-    _metronomeTimer = Timer.periodic(Duration(milliseconds: beatDurationMs), (timer) {
+
+    // Start the timer
+    _startMetronomeTimer();
+  }
+
+  /// Starts or restarts the metronome timer with current BPM
+  static void _startMetronomeTimer() {
+    _metronomeTimer?.cancel();
+
+    final beatDurationMs = (60000 / _bpm).round();
+    print(
+        'MetronomePlayer: Starting metronome timer at $_bpm BPM (${beatDurationMs}ms per beat)');
+
+    _metronomeTimer =
+        Timer.periodic(Duration(milliseconds: beatDurationMs), (timer) {
       _currentBeat++;
-      
-      // Check if we completed count-in measure
-      if (_phase == RecordingPhase.countIn && _currentBeat > _timeSignature.numerator) {
+
+      // Handle count-in mode completion
+      if (_phase == RecordingPhase.countIn &&
+          _currentBeat > _timeSignature.numerator) {
         print('MetronomePlayer: Count-in complete, transitioning to recording');
         _phase = RecordingPhase.recording;
         _currentBeat = 1;
-        
+
         // Notify that count-in is complete (run on main thread)
         if (_onCountInComplete != null) {
           // Use scheduleMicrotask for more reliable UI thread callback
@@ -203,31 +276,35 @@ class MetronomePlayer {
             }
           });
         }
-        
+
         // ALWAYS stop metronome after count-in to avoid memory leaks
         timer.cancel();
         _metronomeTimer = null;
         print('MetronomePlayer: Stopping metronome after count-in');
         return;
-      } else {
-        // Reset beat counter for new measure (only if NOT in count-in completion)
-        if (_currentBeat > _timeSignature.numerator) {
-          _currentBeat = 1;
-        }
       }
       
+      // Handle continuous mode - keep playing forever until manually stopped
+      if (_isInContinuousMode && _currentBeat > _timeSignature.numerator) {
+        _currentBeat = 1; // Reset to beat 1 for new measure
+      } else if (!_isInContinuousMode && _currentBeat > _timeSignature.numerator) {
+        // Reset beat counter for new measure (non-continuous modes)
+        _currentBeat = 1;
+      }
+
       final isStrongBeat = _currentBeat == 1;
       // Play beat asynchronously to avoid blocking timer
       _playBeat(isStrongBeat: isStrongBeat);
       _notifyBeat();
     });
   }
-  
+
   static void _notifyBeat() {
     if (_onBeatCallback != null) {
       // ALWAYS notify beat updates during count-in (no throttling)
-      print('MetronomePlayer: Notifying beat $_currentBeat/${_timeSignature.numerator} phase=$_phase');
-      
+      print(
+          'MetronomePlayer: Notifying beat $_currentBeat/${_timeSignature.numerator} phase=$_phase');
+
       // Use scheduleMicrotask for more reliable UI thread callback
       scheduleMicrotask(() {
         if (_onBeatCallback != null) {
@@ -236,56 +313,56 @@ class MetronomePlayer {
       });
     }
   }
-  
+
   /// Plays a single metronome beat using pre-loaded players
   static Future<void> _playBeat({required bool isStrongBeat}) async {
     try {
       print('MetronomePlayer: Beat ${isStrongBeat ? 'STRONG' : 'weak'}');
-      
+
       // Re-enabled audio now that threading is fixed
       final player = isStrongBeat ? _strongBeatPlayer : _weakBeatPlayer;
       await player.seek(Duration.zero);
       await player.play();
-      
     } catch (e) {
       print('MetronomePlayer: Error playing beat: $e');
     }
   }
-  
+
   /// Synthesizes a sharp metronome click sound
-  static Uint8List _synthesizeClickWav(double frequency, {int durationMs = 100, int sampleRate = 44100}) {
+  static Uint8List _synthesizeClickWav(double frequency,
+      {int durationMs = 100, int sampleRate = 44100}) {
     final frameCount = ((durationMs / 1000) * sampleRate).round();
     final pcm = Int16List(frameCount);
-    
+
     for (int i = 0; i < frameCount; i++) {
       final t = i / sampleRate;
-      
+
       // Sharp, audible click with quick attack and decay
       double signal = 0;
-      
+
       // Primary frequency (clear and strong)
       signal += math.sin(2 * math.pi * frequency * t) * 0.8;
-      
+
       // Add harmonic for sharpness
       signal += math.sin(2 * math.pi * frequency * 2 * t) * 0.3;
-      
+
       // Apply sharp envelope for click character
       final envelope = _clickEnvelope(t, durationMs / 1000.0);
       signal *= envelope;
-      
+
       // Convert to 16-bit PCM
       final sample = (signal * 32767 * 0.7).clamp(-32768.0, 32767.0).round();
       pcm[i] = sample;
     }
-    
+
     return _wrapPcm16ToWav(pcm, sampleRate: sampleRate, numChannels: 1);
   }
-  
+
   /// Sharp envelope for metronome click
   static double _clickEnvelope(double t, double totalDuration) {
-    const double attackTime = 0.005;  // Very quick attack (5ms)
-    const double decayTime = 0.02;    // Quick decay (20ms) 
-    
+    const double attackTime = 0.005; // Very quick attack (5ms)
+    const double decayTime = 0.02; // Quick decay (20ms)
+
     if (t < attackTime) {
       // Sharp attack
       return t / attackTime;
@@ -298,9 +375,10 @@ class MetronomePlayer {
       return 0.0;
     }
   }
-  
+
   /// Wraps PCM data in WAV format
-  static Uint8List _wrapPcm16ToWav(Int16List samples, {required int sampleRate, int numChannels = 1}) {
+  static Uint8List _wrapPcm16ToWav(Int16List samples,
+      {required int sampleRate, int numChannels = 1}) {
     final byteRate = sampleRate * numChannels * 2; // 16-bit
     final blockAlign = numChannels * 2;
     final dataSize = samples.length * 2;
@@ -329,7 +407,7 @@ class MetronomePlayer {
     bytes.setAll(44, samples.buffer.asUint8List());
     return bytes;
   }
-  
+
   static Future<void> dispose() async {
     try {
       _metronomeTimer?.cancel();
@@ -338,7 +416,7 @@ class MetronomePlayer {
       await _weakBeatPlayer.stop();
       await _strongBeatPlayer.dispose();
       await _weakBeatPlayer.dispose();
-      
+
       // Clean up pre-generated sound files
       try {
         if (_strongBeatPath != null) {
@@ -358,7 +436,7 @@ class MetronomePlayer {
       } catch (e) {
         print('MetronomePlayer: Error cleaning up sound files: $e');
       }
-      
+
       _initialized = false;
       _phase = RecordingPhase.idle;
       print('MetronomePlayer: Disposed successfully');

@@ -6,7 +6,11 @@ class PitchPoint {
   final double frequencyHz;
   final String note;
   final int cents;
-  PitchPoint({required this.timeSec, required this.frequencyHz, required this.note, required this.cents});
+  PitchPoint(
+      {required this.timeSec,
+      required this.frequencyHz,
+      required this.note,
+      required this.cents});
 }
 
 class PitchDetector {
@@ -16,8 +20,9 @@ class PitchDetector {
   final double smoothing;
 
   const PitchDetector({
-    this.minVolume = 0.005,  // Reduced from 0.01 - was too high for quiet melodies
-    this.minConfidence = 0.6,  // Reduced from 0.8 - was too restrictive
+    this.minVolume =
+        0.005, // Reduced from 0.01 - was too high for quiet melodies
+    this.minConfidence = 0.6, // Reduced from 0.8 - was too restrictive
     this.windowSize = 2048,
     this.smoothing = 0.8,
   });
@@ -27,7 +32,7 @@ class PitchDetector {
       print('PitchDetector: Empty PCM data provided');
       return const [];
     }
-    
+
     final hop = (windowSize / 2).floor();
     final points = <PitchPoint>[];
     double lastFreq = 0;
@@ -35,8 +40,10 @@ class PitchDetector {
     int confidenceRejects = 0;
     int totalWindows = 0;
 
-    print('PitchDetector: Analyzing ${pcm.length} samples at ${sampleRate}Hz (${(pcm.length/sampleRate).toStringAsFixed(2)}s)');
-    print('  Settings: minVolume=${minVolume}, minConfidence=${minConfidence}, windowSize=${windowSize}');
+    print(
+        'PitchDetector: Analyzing ${pcm.length} samples at ${sampleRate}Hz (${(pcm.length / sampleRate).toStringAsFixed(2)}s)');
+    print(
+        '  Settings: minVolume=$minVolume, minConfidence=$minConfidence, windowSize=$windowSize');
 
     for (int start = 0; start + windowSize <= pcm.length; start += hop) {
       totalWindows++;
@@ -66,25 +73,30 @@ class PitchDetector {
         cents: noteCents.$2,
       ));
     }
-    
-    print('PitchDetector: Results - ${points.length} valid points from ${totalWindows} windows');
-    print('  Rejected: ${volumeRejects} volume, ${confidenceRejects} confidence');
-    print('  Success rate: ${((points.length / totalWindows) * 100).toStringAsFixed(1)}%');
+
+    print(
+        'PitchDetector: Results - ${points.length} valid points from $totalWindows windows');
+    print('  Rejected: $volumeRejects volume, $confidenceRejects confidence');
+    print(
+        '  Success rate: ${((points.length / totalWindows) * 100).toStringAsFixed(1)}%');
     if (points.isNotEmpty) {
       final noteFreq = <String, int>{};
       for (final p in points) {
         final note = p.note.replaceAll(RegExp(r'\d+'), '');
         noteFreq[note] = (noteFreq[note] ?? 0) + 1;
       }
-      print('  Note distribution: ${noteFreq.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
+      print(
+          '  Note distribution: ${noteFreq.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
     }
-    
+
     return points;
   }
 
   double _rms(Float32List buf) {
     double sum = 0;
-    for (final v in buf) { sum += v * v; }
+    for (final v in buf) {
+      sum += v * v;
+    }
     return math.sqrt(sum / buf.length);
   }
 
@@ -106,7 +118,10 @@ class PitchDetector {
     final maxLag = math.min((sampleRate / 50).floor(), size - 1);
     for (int lag = minLag; lag < maxLag; lag++) {
       final v = acf[lag];
-      if (v > peakValue) { peakValue = v; peakIndex = lag; }
+      if (v > peakValue) {
+        peakValue = v;
+        peakIndex = lag;
+      }
     }
     if (peakIndex <= 0 || acf[0] == 0) return (0.0, 0.0);
     final alpha = acf[peakIndex - 1];
@@ -126,8 +141,22 @@ class PitchDetector {
     if (frequency < 20) return ('Too low', 0);
     final halfSteps = (12 * (math.log(frequency / C0) / math.ln2)).round();
     final exactFrequency = C0 * math.pow(2, halfSteps / 12);
-    final cents = (1200 * (math.log(frequency / exactFrequency) / math.ln2)).round();
-    const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    final cents =
+        (1200 * (math.log(frequency / exactFrequency) / math.ln2)).round();
+    const names = [
+      'C',
+      'C#',
+      'D',
+      'D#',
+      'E',
+      'F',
+      'F#',
+      'G',
+      'G#',
+      'A',
+      'A#',
+      'B'
+    ];
     final noteIndex = ((halfSteps % 12) + 12) % 12;
     final noteName = names[noteIndex];
     final octave = (halfSteps / 12).floor();
