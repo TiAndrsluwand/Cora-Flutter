@@ -3,10 +3,13 @@
 A Flutter rewrite of Cora with audio recording, pitch detection, and chord analysis.
 
 ## Features
-- Record audio up to 20 seconds
-- Analyze recordings for musical key detection
-- Generate chord progression suggestions
-- Play chord sounds (simple tone synthesis)
+- **Professional Audio Recording** - Record audio up to 20 seconds with optional metronome count-in
+- **Advanced Music Analysis** - Analyze recordings for musical key detection and pitch analysis
+- **Chord Progression Engine** - Generate intelligent chord progression suggestions based on detected melody
+- **Interactive Piano Keyboard** - Visual chord display with responsive piano interface and orange highlighting
+- **Professional Metronome System** - Real-time adjustable BPM (60-200), multiple time signatures, count-in functionality
+- **Realistic Audio Playback** - Piano sound synthesis with harmonics and realistic envelopes
+- **Progressive Disclosure UI** - Clean, expandable interface optimized for mobile recording workflow
 
 ## Setup Instructions
 
@@ -79,27 +82,36 @@ flutter run -d chrome
    - Chord playback uses simple tone synthesis
 
 ### Dependencies
-- `record`: Audio recording
-- `just_audio`: Audio playback
-- `flutter_sound`: Sound generation
-- `permission_handler`: Android permissions
-- `http`: Network requests
+- `record`: Professional audio recording functionality
+- `just_audio`: High-quality audio playback engine  
+- `permission_handler`: Microphone and system permissions
+- `path_provider`: Temporary file management for audio
+- `audio_session`: Cross-platform audio session management
 
 ## Project Structure
 ```
 lib/
 ├── main.dart                 # App entry point
 ├── src/
-│   ├── recorder/            # Recording UI and logic
+│   ├── recorder/            # Recording UI with progressive disclosure design
+│   ├── widgets/             # Interactive components (piano, metronome controls, count-in)
 │   ├── audio/               # Audio processing (pitch detection, WAV decoding)
-│   ├── analysis/            # Key detection and chord analysis
-│   ├── theory/              # Music theory helpers
-│   └── sound/               # Chord playback
+│   ├── analysis/            # Advanced key detection and chord analysis
+│   ├── theory/              # Music theory utilities and constants
+│   └── sound/               # Professional audio synthesis and metronome
 ```
 
-## Notes
-- Audio recording is limited to 20 seconds
-- Pitch detection uses autocorrelation algorithm
-- Key detection uses Krumhansl-Schmuckler profiles
-- Chord suggestions are generated based on detected melody
-- Sound playback uses simple sine wave synthesis
+## Recent Major Updates
+- **Real-time Metronome Controls** - BPM and time signature adjustments during continuous playback
+- **Professional Recording Workflow** - Count-in functionality with visual indicators
+- **Enhanced Piano Interface** - Consistent orange highlighting with responsive design
+- **UI Cleanup** - Removed redundant cards for streamlined, professional interface
+- **Progressive Disclosure** - Expandable settings panels for optimal screen space usage
+
+## Technical Notes
+- **Audio Recording** - Professional 20-second WAV recording with optional metronome count-in
+- **Pitch Detection** - Advanced autocorrelation algorithm with note consolidation
+- **Key Detection** - Krumhansl-Schmuckler profiles for accurate musical key identification
+- **Chord Engine** - Intelligent progression suggestions based on detected melody and key
+- **Audio Synthesis** - Realistic piano sounds with harmonics and exponential decay envelopes
+- **Metronome System** - Sharp click synthesis with strong/weak beat patterns (1200Hz/800Hz)

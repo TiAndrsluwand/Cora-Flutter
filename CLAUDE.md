@@ -14,6 +14,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 7. **Piano Widget Refactor**: Simplified interface by removing dropdown selector for minimal design
 8. **Visual Highlighting**: Enhanced chord visualization with consistent orange styling and improved contrast
 9. **Metronome System**: Comprehensive metronome with count-in functionality for professional recording workflow
+10. **Real-time Metronome Controls**: BPM and time signature adjustments during continuous playback
+11. **Progressive Disclosure UI**: ExpansionTile-based interface with Card layout for optimal screen usage
+12. **UI Cleanup**: Removed redundant "Ready to Record" card for streamlined, professional interface
 
 ### Known Working Features
 - ✅ Audio recording (20-second WAV files)
@@ -24,9 +27,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ Visual feedback (bouncing note, progress bars, chord highlighting)
 - ✅ Clean UI without debug elements
 - ✅ **Professional metronome system with count-in functionality**
+- ✅ **Real-time BPM and time signature adjustments during continuous playback**
 - ✅ **Configurable BPM (60-200) and time signatures (4/4, 3/4, 2/4, 6/8, 2/2)**
 - ✅ **Visual count-in indicators with beat tracking**
 - ✅ **Strong/weak beat audio patterns (downbeat emphasis)**
+- ✅ **Progressive disclosure UI with ExpansionTile metronome controls**
+- ✅ **Clean, streamlined interface without redundant cards**
 
 ### Recent Bug Fixes
 - **Note Parsing**: Fixed "Failed to parse note: F" - now correctly maps F→F4, A→A4, C→C4
@@ -35,6 +41,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Piano Integration**: Connected chord buttons to piano keyboard selection and audio
 - **Visual Inconsistency**: Fixed incomplete orange highlighting - all chord notes now have consistent borders and indicator dots
 - **UI Clutter**: Removed dropdown selector from piano widget for cleaner, more intuitive interface
+- **BPM Real-time Updates**: Fixed BPM slider changes not affecting live metronome tempo during continuous playback
+- **Redundant UI Elements**: Removed "Ready to Record" card that provided no additional value
 
 ## Common Commands
 
@@ -221,3 +229,29 @@ When "Use Metronome" is enabled and user presses Record:
 5. ✅ After count-in completes, transitions to recording phase
 6. ✅ Recording indicator turns red, actual audio recording begins
 7. ✅ Optional: Metronome continues during recording if enabled
+
+### Latest Improvements (December 2025)
+
+#### Real-time Metronome Controls
+- **BPM Slider Updates**: Live tempo changes during continuous metronome playback
+- **Time Signature Changes**: Instant beat pattern updates without stopping playback
+- **Auto-update Logic**: Enhanced setBpm() and setTimeSignature() methods with continuous mode detection
+- **Timer Restart Mechanism**: Seamless tempo transitions without audio gaps
+
+#### Progressive Disclosure UI Design
+- **ExpansionTile Integration**: Collapsible metronome settings for better screen space utilization
+- **Card-based Layout**: Professional visual hierarchy with Material Design principles
+- **Animated Transitions**: Smooth expand/collapse animations for settings panels
+- **Mobile-optimized**: Touch-friendly controls optimized for recording workflow
+
+#### UI Cleanup and Streamlining
+- **Removed Redundant Cards**: Eliminated "Ready to Record" card that provided no additional value
+- **Cleaner Interface**: Streamlined layout focusing on essential recording controls
+- **Reduced Visual Clutter**: Minimal design approach with progressive disclosure
+- **Professional Appearance**: Clean, focused interface suitable for professional music recording
+
+#### Technical Architecture Improvements  
+- **Continuous Mode Detection**: Real-time parameter updates only when metronome is actively playing
+- **State Management**: Proper handling of UI state updates during live parameter changes  
+- **Performance Optimization**: Efficient timer restart mechanism for tempo changes
+- **Error Handling**: Robust error handling for audio parameter updates
