@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import '../utils/debug_logger.dart';
 
 class KeyResult {
   final String key;
@@ -54,11 +55,11 @@ class KeyDetector {
 
   static KeyResult detect(List<String> notes) {
     if (notes.isEmpty) {
-      print('KeyDetector: No notes provided for key detection');
+      DebugLogger.debug('KeyDetector: No notes provided for key detection');
       return KeyResult('Unknown', false, 0);
     }
 
-    print(
+    DebugLogger.debug(
         'KeyDetector: Detecting key from ${notes.length} notes: ${notes.join(', ')}');
 
     // Build pitch class histogram
@@ -70,16 +71,16 @@ class KeyDetector {
         hist[idx] += 1;
         validNotes++;
       } else {
-        print('KeyDetector: Warning - could not parse note: $n');
+        DebugLogger.debug('KeyDetector: Warning - could not parse note: $n');
       }
     }
 
-    print('KeyDetector: Parsed $validNotes valid notes');
+    DebugLogger.debug('KeyDetector: Parsed $validNotes valid notes');
 
     // Normalize
     final sum = hist.fold<double>(0, (s, v) => s + v);
     if (sum == 0) {
-      print('KeyDetector: No valid notes for histogram');
+      DebugLogger.debug('KeyDetector: No valid notes for histogram');
       return KeyResult('Unknown', false, 0);
     }
     for (int i = 0; i < 12; i++) {
@@ -94,7 +95,7 @@ class KeyDetector {
         .map(
             (e) => '${noteNames[e.key]}:${(e.value * 100).toStringAsFixed(1)}%')
         .join(', ');
-    print('KeyDetector: Pitch class distribution - $histStr');
+    DebugLogger.debug('KeyDetector: Pitch class distribution - $histStr');
 
     double bestScore = -1e9;
     String bestKey = 'C';
@@ -124,13 +125,13 @@ class KeyDetector {
     // Show top candidates
     final sortedKeys = keyScores.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    print('KeyDetector: Top key candidates:');
+    DebugLogger.debug('KeyDetector: Top key candidates:');
     for (int i = 0; i < 5 && i < sortedKeys.length; i++) {
       final entry = sortedKeys[i];
-      print('  ${i + 1}. ${entry.key}: ${entry.value.toStringAsFixed(3)}');
+      DebugLogger.debug('  ${i + 1}. ${entry.key}: ${entry.value.toStringAsFixed(3)}');
     }
 
-    print(
+    DebugLogger.debug(
         'KeyDetector: Selected $bestKey ${bestMinor ? 'minor' : 'major'} (score: ${bestScore.toStringAsFixed(3)})');
     return KeyResult(bestKey, bestMinor, bestScore);
   }

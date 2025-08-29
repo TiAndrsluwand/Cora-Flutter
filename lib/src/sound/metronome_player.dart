@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 

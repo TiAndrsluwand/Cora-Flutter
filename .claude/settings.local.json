@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze:*)",
+      "Bash(flutter run:*)",
+      "Bash(timeout 15 flutter run --debug)",
+      "Bash(timeout 30 flutter run --debug)",
+      "Bash(flutter build:*)",
+      "Bash(flutter pub:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

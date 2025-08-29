@@ -1,15 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'src/recorder/recorder_page.dart';
-import 'src/theme/theme_provider.dart';
+import 'src/recorder/recorder_page_minimal.dart';
+import 'src/theme/minimal_design_system.dart';
 
 void main() {
-  runApp(
-    ChangeNotifierProvider(
-      create: (context) => ThemeProvider(),
-      child: const CoraApp(),
-    ),
-  );
+  runApp(const CoraApp());
 }
 
 class CoraApp extends StatelessWidget {
@@ -17,16 +11,10 @@ class CoraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return MaterialApp(
-          title: 'Cora',
-          theme: themeProvider.lightTheme,
-          darkTheme: themeProvider.darkTheme,
-          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: const RecorderPage(),
-        );
-      },
+    return MaterialApp(
+      title: 'Cora',
+      theme: MinimalDesign.theme,
+      home: const RecorderPage(),
     );
   }
 }

@@ -1,4 +1,4 @@
-import '../theory/music_theory.dart' as MT;
+import '../theory/music_theory.dart' as music_theory;
 
 class DetectedNote {
   final String note;
@@ -11,7 +11,7 @@ class DetectedNote {
 class ChordSuggestion {
   final String symbol;
   final String root;
-  final MT.ChordType chordType;
+  final music_theory.ChordType chordType;
   final List<String> notes;
   final int duration;
   final int startTime;
@@ -76,8 +76,8 @@ class ChordSuggestionEngine {
         'ChordEngine: Generating chord suggestions for ${melody.length} notes in $keyLabel ${isMinor ? 'minor' : 'major'}');
     final keyRoot = isMinor ? keyLabel.replaceAll('m', '') : keyLabel;
     final scaleType =
-        isMinor ? MT.SCALE_TYPES.NATURAL_MINOR : MT.SCALE_TYPES.MAJOR;
-    final scale = MT.buildScale(keyRoot, scaleType);
+        isMinor ? music_theory.SCALE_TYPES.NATURAL_MINOR : music_theory.SCALE_TYPES.MAJOR;
+    final scale = music_theory.buildScale(keyRoot, scaleType);
     print('ChordEngine: Scale notes: ${scale.join(', ')}');
 
     final segments = _segmentMelody(melody);
@@ -161,7 +161,7 @@ class ChordSuggestionEngine {
     final prev = melody[pos - 1];
     final isLong = prev.duration > 500;
     final pitchChange =
-        (MT.getNoteIndex(cur.note) - MT.getNoteIndex(prev.note)).abs();
+        (music_theory.getNoteIndex(cur.note) - music_theory.getNoteIndex(prev.note)).abs();
     final isSignificant = pitchChange > 4;
     final gap = cur.startTime - (prev.startTime + prev.duration);
     final isRest = gap > 300;
@@ -171,13 +171,13 @@ class ChordSuggestionEngine {
   List<ChordProgressionSuggestion> _generateProgressions(
     List<List<DetectedNote>> segments,
     String key,
-    MT.ScaleType scaleType,
+    music_theory.ScaleType scaleType,
     List<String> scale,
   ) {
     final result = <ChordProgressionSuggestion>[];
     if (segments.isEmpty) return result;
 
-    final patterns = scaleType == MT.SCALE_TYPES.MAJOR
+    final patterns = scaleType == music_theory.SCALE_TYPES.MAJOR
         ? [
             {
               'name': 'Basic I-IV-V',
@@ -234,7 +234,7 @@ class ChordSuggestionEngine {
     for (final p in all) {
       final nums = (p['nums'] as List<String>);
       if (nums.length > segments.length) continue;
-      final progChords = MT.progressionToChords(nums, key, scaleType);
+      final progChords = music_theory.progressionToChords(nums, key, scaleType);
       final adapted = _adaptToSegments(progChords, segments, scale);
       final score = _scoreProgression(adapted, segments, scale);
       result.add(ChordProgressionSuggestion(
@@ -249,11 +249,11 @@ class ChordSuggestionEngine {
   }
 
   List<ChordSuggestion> _adaptToSegments(
-    List<MT.DiatonicChord> chordProg,
+    List<music_theory.DiatonicChord> chordProg,
     List<List<DetectedNote>> segments,
     List<String> scale,
   ) {
-    final repeated = <MT.DiatonicChord>[];
+    final repeated = <music_theory.DiatonicChord>[];
     while (repeated.length < segments.length) {
       repeated.addAll(chordProg);
     }
@@ -266,7 +266,7 @@ class ChordSuggestionEngine {
       final start = seg.first.startTime;
       final end = seg.last.startTime + seg.last.duration;
       final dur = end - start;
-      final notes = MT.buildChord(chord.root, chord.chordType);
+      final notes = music_theory.buildChord(chord.root, chord.chordType);
       final weight = _chordWeight(chord, seg, scale);
       out.add(ChordSuggestion(
         symbol: chord.symbol,
@@ -282,15 +282,15 @@ class ChordSuggestionEngine {
   }
 
   double _chordWeight(
-      MT.DiatonicChord chord, List<DetectedNote> segment, List<String> scale) {
+      music_theory.DiatonicChord chord, List<DetectedNote> segment, List<String> scale) {
     // Duration-weighted pitch fitness with strong-beat emphasis
     var weight = 0.0;
     var totalDur = 0.0;
-    final chordNotes = MT.buildChord(chord.root, chord.chordType);
+    final chordNotes = music_theory.buildChord(chord.root, chord.chordType);
     if (segment.isEmpty) return 0;
     final segStart = segment.first.startTime;
     for (final n in segment) {
-      final norm = MT.normalizeNoteName(n.note);
+      final norm = music_theory.normalizeNoteName(n.note);
       final dur = n.duration.clamp(1, 2000).toDouble();
       totalDur += dur;
       final posMs = (n.startTime - segStart).clamp(0, 1000000);
@@ -298,16 +298,16 @@ class ChordSuggestionEngine {
           (posMs % 500) < 120; // rough 120ms window around 0.5s grid
 
       double noteScore;
-      if (MT.isNoteInChord(norm, chordNotes)) {
+      if (music_theory.isNoteInChord(norm, chordNotes)) {
         noteScore = 2.2;
-      } else if (MT.isNoteInScale(norm, scale))
+      } else if (music_theory.isNoteInScale(norm, scale))
         noteScore = 1.0;
       else
         noteScore = 0.1; // chromatic
 
       if (onStrongBeat) {
         // Emphasize strong beat correctness
-        noteScore *= MT.isNoteInChord(norm, chordNotes) ? 1.4 : 0.7;
+        noteScore *= music_theory.isNoteInChord(norm, chordNotes) ? 1.4 : 0.7;
       }
 
       if (n.duration > 400) {
@@ -327,9 +327,9 @@ class ChordSuggestionEngine {
     for (var i = 1; i < chords.length; i++) {
       final a = chords[i - 1];
       final b = chords[i];
-      final interval = MT.getInterval(a.root, b.root);
-      final degA = MT.getScaleDegree(a.root, scale);
-      final degB = MT.getScaleDegree(b.root, scale);
+      final interval = music_theory.getInterval(a.root, b.root);
+      final degA = music_theory.getScaleDegree(a.root, scale);
+      final degB = music_theory.getScaleDegree(b.root, scale);
 
       // Prefer small root motion
       final smallMotion = {1, 2, 3, 4};
