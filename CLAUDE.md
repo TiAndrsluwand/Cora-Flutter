@@ -16,7 +16,7 @@ The codebase has undergone a complete professional cleanup and redesign:
 
 ### Current Architecture (Clean & Minimal)
 
-**Core Files (17 total):**
+**Core Files (18 total):**
 ```
 lib/
 ├── main.dart                           # App entry point
@@ -34,10 +34,11 @@ lib/
     ├── sound/ (2 files)                # Audio synthesis
     │   ├── chord_player.dart          # Piano sound synthesis
     │   └── metronome_player.dart      # Professional metronome
-    ├── widgets/ (3 files)              # Minimal UI components only
+    ├── widgets/ (4 files)              # Minimal UI components only
     │   ├── minimal_recording_interface.dart
     │   ├── minimal_piano_keyboard.dart
-    │   └── minimal_metronome_controls.dart
+    │   ├── minimal_metronome_controls.dart
+    │   └── minimal_analyzing_animation.dart
     ├── theme/ (1 file)
     │   └── minimal_design_system.dart  # True minimalist theme
     ├── theory/ (1 file)
@@ -63,6 +64,7 @@ lib/
 - ✅ **True Minimalism**: Apple/Dieter Rams design principles
 - ✅ **Clean Interface**: Black, white, gray with single blue accent
 - ✅ **BPM Slider**: Efficient tempo control (60-200 BPM)
+- ✅ **Animated Feedback**: Pulsing dots and progress during analysis
 - ✅ **No Visual Clutter**: Every element serves a purpose
 - ✅ **Responsive Design**: Optimized for mobile recording workflow
 
@@ -159,6 +161,13 @@ MinimalDesign.primaryButton // Button style
 - Simple start/stop functionality
 - No decorative elements
 
+**Analyzing Animation** (`minimal_analyzing_animation.dart`):
+- Full-screen animation overlay during audio processing
+- Three pulsing dots with staggered wave effect
+- Animated text with progressive dots ("Analyzing melody...")
+- Clean indeterminate progress bar
+- Proper color contrast in light/dark themes
+
 ## Troubleshooting
 
 ### Build Issues
@@ -182,7 +191,7 @@ MinimalDesign.primaryButton // Button style
 1. **Removed unused files**: elegant_*, professional_*, zen_* widgets
 2. **Eliminated dependencies**: 9 unnecessary packages removed
 3. **Optimized imports**: Cleaned up all unused imports
-4. **Streamlined architecture**: 17 essential files remain
+4. **Streamlined architecture**: 18 essential files remain
 
 ### UI Redesign  
 1. **True minimalism**: Apple/Dieter Rams design principles
@@ -193,8 +202,9 @@ MinimalDesign.primaryButton // Button style
 ### Enhanced Functionality
 1. **Real chord analysis**: Processes actual audio recordings
 2. **BPM slider control**: More efficient than arrow buttons
-3. **Optimized performance**: Faster build and runtime
-4. **Professional quality**: Senior Flutter development standards
+3. **Animated UI feedback**: Full-screen analyzing animation with visual progress
+4. **Optimized performance**: Faster build and runtime
+5. **Professional quality**: Senior Flutter development standards
 
 ## Development Guidelines
 
