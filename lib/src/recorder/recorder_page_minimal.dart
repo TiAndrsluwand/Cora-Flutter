@@ -15,19 +15,23 @@ import '../analysis/detected_chord.dart';
 import '../widgets/minimal_piano_keyboard.dart';
 import '../widgets/minimal_recording_interface.dart';
 import '../widgets/minimal_metronome_controls.dart';
+import '../widgets/minimal_analyzing_animation.dart';
 import '../sound/metronome_player.dart';
 import '../theme/minimal_design_system.dart';
 import '../utils/debug_logger.dart';
+import '../sound/audio_service.dart';
 
 class RecorderPage extends StatefulWidget {
-  const RecorderPage({super.key});
+  final VoidCallback onThemeToggle;
+  
+  const RecorderPage({super.key, required this.onThemeToggle});
+  
   @override
   State<RecorderPage> createState() => _RecorderPageState();
 }
 
-class _RecorderPageState extends State<RecorderPage> {
+class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMixin {
   final AudioRecorder _record = AudioRecorder();
-  final AudioPlayer _player = AudioPlayer();
   Timer? _timer;
   int _seconds = 0;
   String? _path;
@@ -35,6 +39,7 @@ class _RecorderPageState extends State<RecorderPage> {
   static const int _maxSeconds = 20;
 
   bool _isAnalyzing = false;
+  bool _analysisCompleted = false;
   String? _detectedKey;
   List<ChordProgressionSuggestion> _suggestions = const [];
 
@@ -46,6 +51,7 @@ class _RecorderPageState extends State<RecorderPage> {
   
   // Metronome state
   bool _useMetronome = false;
+  bool _continueMetronomeDuringRecording = false;
   RecordingPhase _recordingPhase = RecordingPhase.idle;
   int _currentBeat = 0;
   int _totalBeats = 4;
@@ -53,6 +59,13 @@ class _RecorderPageState extends State<RecorderPage> {
   
   // Continuous metronome state
   bool _isPreviewingMetronome = false;
+  
+  // Animation controllers for analyze button
+  late AnimationController _analyzeButtonController;
+  late Animation<double> _analyzeButtonAnimation;
+  
+  // Audio playback state
+  bool _isPlayingRecording = false;
 
   @override
   void initState() {
@@ -60,10 +73,40 @@ class _RecorderPageState extends State<RecorderPage> {
     _initAudioSession();
     _loadSf();
     _initMetronome();
+    _initAudioPlayer();
+    _initAnimations();
+  }
+  
+  void _initAnimations() {
+    _analyzeButtonController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    _analyzeButtonAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _analyzeButtonController,
+      curve: Curves.easeInOut,
+    ));
   }
 
   Future<void> _loadSf() async {
     await ChordPlayer.ensureLoaded(context);
+  }
+  
+  Future<void> _initAudioPlayer() async {
+    // Initialize centralized audio service
+    await AudioService.instance.initialize();
+    
+    // Set callback for recording playback state changes
+    AudioService.instance.setRecordingPlaybackCallback((isPlaying) {
+      if (mounted) {
+        setState(() {
+          _isPlayingRecording = isPlaying;
+        });
+      }
+    });
   }
   
   Future<void> _initMetronome() async {
@@ -95,6 +138,7 @@ class _RecorderPageState extends State<RecorderPage> {
     
     setState(() {
       _useMetronome = MetronomePlayer.enabled;
+      _continueMetronomeDuringRecording = MetronomePlayer.continueMetronomeDuringRecording;
       _totalBeats = MetronomePlayer.timeSignature.numerator;
     });
   }
@@ -110,7 +154,7 @@ class _RecorderPageState extends State<RecorderPage> {
       }
 
       final tempDir = await getTemporaryDirectory();
-      _path = '${tempDir.path}/temp.wav';
+      _path = '${tempDir.path}/temp.wav'; // Keep WAV for compatibility with analysis
 
       _seconds = 0;
       
@@ -146,6 +190,9 @@ class _RecorderPageState extends State<RecorderPage> {
         _seconds = 0;
       });
 
+      // Lower metronome volume during recording
+      MetronomePlayer.setRecordingMode(true);
+
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted) {
           timer.cancel();
@@ -158,17 +205,30 @@ class _RecorderPageState extends State<RecorderPage> {
       });
 
       try {
-        await _player.stop();
+        // Stop all audio playback before recording
+        await AudioService.instance.stopAll();
         await ChordPlayer.stopAnyPlayback();
-        await Future.delayed(const Duration(milliseconds: 50));
+        
+        // Stop metronome preview if running
+        if (_isPreviewingMetronome) {
+          await _stopContinuousMetronome();
+        }
+        
+        // Configure audio session for recording
+        await AudioService.instance.prepareForRecording();
+        
+        // Give audio system time to settle
+        await Future.delayed(const Duration(milliseconds: 150));
       } catch (e) {
         DebugLogger.debug('Warning: Error stopping audio resources: $e');
       }
-
-      await _configureForRecording();
-      await Future.delayed(const Duration(milliseconds: 150));
       
-      await _record.start(const RecordConfig(encoder: AudioEncoder.wav), path: _path!);
+      // Use WAV with reduced quality for smaller file size (~800KB vs ~1.7MB)
+      await _record.start(const RecordConfig(
+        encoder: AudioEncoder.wav,
+        bitRate: 64000, // Lower bitrate to reduce size
+        sampleRate: 22050, // Half sample rate for smaller file
+      ), path: _path!);
     } catch (e) {
       await MetronomePlayer.stopMetronome();
       setState(() {
@@ -181,7 +241,10 @@ class _RecorderPageState extends State<RecorderPage> {
   }
   
   Future<void> _stop() async {
-    await MetronomePlayer.stopMetronome();
+    await MetronomePlayer.stopRecordingMetronome();
+    
+    // Restore normal metronome volume
+    MetronomePlayer.setRecordingMode(false);
     
     String? filePath;
     if (_isRecording) {
@@ -199,7 +262,7 @@ class _RecorderPageState extends State<RecorderPage> {
       _seconds = 0;
     });
     
-    await _configureForPlayback();
+    await AudioService.instance.restorePlaybackConfiguration();
     
     if (_path != null) {
       try {
@@ -225,6 +288,7 @@ class _RecorderPageState extends State<RecorderPage> {
       _suggestions = const [];
       _selectedChord = null;
       _isAnalyzing = false;
+      _analysisCompleted = false;
     });
   }
 
@@ -237,38 +301,6 @@ class _RecorderPageState extends State<RecorderPage> {
     }
   }
 
-  Future<void> _configureForRecording() async {
-    try {
-      final session = await AudioSession.instance;
-      await session.setActive(false);
-      await session.configure(AudioSessionConfiguration(
-        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker,
-        avAudioSessionMode: AVAudioSessionMode.measurement,
-        androidAudioAttributes: const AndroidAudioAttributes(
-          contentType: AndroidAudioContentType.music,
-          flags: AndroidAudioFlags.audibilityEnforced,
-          usage: AndroidAudioUsage.media,
-        ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
-        androidWillPauseWhenDucked: false,
-      ));
-      await session.setActive(true);
-    } catch (e) {
-      DebugLogger.debug('Audio session config error: $e');
-    }
-  }
-
-  Future<void> _configureForPlayback() async {
-    try {
-      final session = await AudioSession.instance;
-      await session.setActive(false);
-      await session.configure(const AudioSessionConfiguration.music());
-      await session.setActive(true);
-    } catch (e) {
-      DebugLogger.debug('Playback session config error: $e');
-    }
-  }
 
   void _showErrorSnackBar(String message) {
     if (mounted) {
@@ -281,23 +313,71 @@ class _RecorderPageState extends State<RecorderPage> {
   Future<void> _analyzeRecording() async {
     if (_path == null || _isAnalyzing) return;
 
-    setState(() => _isAnalyzing = true);
+    DebugLogger.debug('Starting analysis for path: $_path');
+
+    // Stop any audio playback before analysis
+    try {
+      await AudioService.instance.stopAll();
+      if (_isPreviewingMetronome) {
+        await _stopContinuousMetronome();
+      }
+    } catch (e) {
+      DebugLogger.debug('Warning: Error stopping audio before analysis: $e');
+    }
+
+    // Set analyzing state and start button animation
+    if (mounted) {
+      setState(() => _isAnalyzing = true);
+      _analyzeButtonController.repeat();
+      DebugLogger.debug('Analysis state set to true, button animation started');
+    }
 
     try {
+      // Ensure minimum animation visibility (1.5 seconds)
+      final analysisStartTime = DateTime.now();
+      
       final result = await AnalysisService.analyzeRecording(_path!);
       
+      final analysisEndTime = DateTime.now();
+      final analysisDuration = analysisEndTime.difference(analysisStartTime);
+      
+      DebugLogger.debug('Analysis completed in ${analysisDuration.inMilliseconds}ms');
+      
+      // Ensure minimum 1500ms for animation visibility
+      const minDuration = Duration(milliseconds: 1500);
+      if (analysisDuration < minDuration) {
+        final remainingTime = minDuration - analysisDuration;
+        DebugLogger.debug('Adding ${remainingTime.inMilliseconds}ms delay for animation visibility');
+        await Future.delayed(remainingTime);
+      }
+      
       if (mounted) {
+        _analyzeButtonController.stop();
+        _analyzeButtonController.reset();
         setState(() {
           _detectedKey = result.detectedKey;
           _suggestions = result.suggestions;
           _isAnalyzing = false;
+          _analysisCompleted = true;
         });
+        DebugLogger.debug('Analysis completed: Key=${result.detectedKey}, Suggestions=${result.suggestions.length}');
       }
     } catch (e) {
+      DebugLogger.debug('Analysis failed with error: $e');
+      
+      // Ensure minimum animation time even on error
+      await Future.delayed(const Duration(milliseconds: 1500));
+      
       if (mounted) {
-        setState(() => _isAnalyzing = false);
+        _analyzeButtonController.stop();
+        _analyzeButtonController.reset();
+        setState(() {
+          _isAnalyzing = false;
+          _analysisCompleted = true;
+        });
         _showErrorSnackBar('Analysis failed: $e');
       }
+      DebugLogger.debug('Analysis state reset after error');
     }
   }
 
@@ -316,12 +396,79 @@ class _RecorderPageState extends State<RecorderPage> {
     setState(() => _isPreviewingMetronome = false);
   }
 
+  Future<void> _togglePlayback() async {
+    if (_path == null) return;
+    
+    try {
+      if (_isPlayingRecording) {
+        // Stop playback
+        await AudioService.instance.stopAll();
+      } else {
+        // Start playback via centralized audio service
+        await _prepareAndPlayAudio();
+      }
+    } catch (e) {
+      DebugLogger.debug('Playback error: $e');
+      _showErrorSnackBar('Playback failed: $e');
+    }
+  }
+
+  Future<void> _prepareAndPlayAudio() async {
+    try {
+      // Step 1: Stop any ongoing metronome to avoid conflicts
+      if (_isPreviewingMetronome) {
+        await _stopContinuousMetronome();
+      }
+      
+      // Step 2: Play recording via centralized service
+      await AudioService.instance.playRecording(_path!);
+      
+      DebugLogger.debug('Recording playback started via AudioService');
+    } catch (e) {
+      DebugLogger.debug('Error preparing audio: $e');
+      rethrow;
+    }
+  }
+
+  /// Clear current recording and return to recording state
+  Future<void> _recordNew() async {
+    try {
+      // Stop any current playback
+      await AudioService.instance.stopAll();
+      
+      // Clear current recording and analysis results
+      setState(() {
+        _path = null;
+        _analysisCompleted = false;
+        _detectedKey = null;
+        _suggestions = const [];
+        _selectedChord = null;
+        _lastRmsDb = null;
+        _isPlayingRecording = false;
+      });
+      
+      DebugLogger.debug('Cleared recording - ready for new recording');
+    } catch (e) {
+      DebugLogger.debug('Error clearing recording: $e');
+      _showErrorSnackBar('Failed to prepare for new recording');
+    }
+  }
+
   @override
-  void dispose() {
+  void dispose() async {
     _timer?.cancel();
-    _player.dispose();
-    ChordPlayer.dispose();
-    MetronomePlayer.dispose();
+    _analyzeButtonController.dispose();
+    
+    // Stop and dispose audio resources properly
+    try {
+      await AudioService.instance.stopAll();
+      await ChordPlayer.dispose();
+      await MetronomePlayer.dispose();
+      // Note: AudioService disposal is handled globally, not per-page
+    } catch (e) {
+      DebugLogger.debug('Disposal error: $e');
+    }
+    
     super.dispose();
   }
 
@@ -340,30 +487,30 @@ class _RecorderPageState extends State<RecorderPage> {
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () async {
-                    if (_path == null) return;
-                    try {
-                      await _player.stop();
-                      await _player.setVolume(1.0);
-                      if (Platform.isAndroid || Platform.isIOS) {
-                        await _player.setFilePath(_path!);
-                      } else {
-                        await _player.setUrl(Uri.file(_path!).toString());
-                      }
-                      await _player.play();
-                    } catch (_) {}
-                  },
-                  child: const Text('Play'),
+                  onPressed: _path != null ? _togglePlayback : null,
+                  child: Text(_isPlayingRecording ? 'Stop' : 'Play'),
                 ),
               ),
               MinimalDesign.horizontalSpace(MinimalDesign.space3),
               Expanded(
-                child: ElevatedButton(
-                  onPressed: (_path != null && !_isAnalyzing) ? _analyzeRecording : null,
-                  child: const Text('Analyze'),
-                ),
+                child: _buildAnimatedAnalyzeButton(),
               ),
             ],
+          ),
+          
+          MinimalDesign.verticalSpace(MinimalDesign.space3),
+          
+          // Record New button for clean workflow
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isAnalyzing ? null : _recordNew,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MinimalDesign.lightGray,
+                foregroundColor: MinimalDesign.black,
+              ),
+              child: const Text('Record New'),
+            ),
           ),
           if (_lastRmsDb != null) ...[
             MinimalDesign.verticalSpace(MinimalDesign.space2),
@@ -449,6 +596,63 @@ class _RecorderPageState extends State<RecorderPage> {
     );
   }
 
+  Widget _buildNoSuggestionsMessage() {
+    return Padding(
+      padding: MinimalDesign.screenPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Analysis Complete',
+            style: MinimalDesign.heading,
+          ),
+          MinimalDesign.verticalSpace(MinimalDesign.space3),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: MinimalDesign.lightGray.withValues(alpha: 0.3),
+              border: Border.all(
+                color: MinimalDesign.lightGray,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.music_note,
+                  size: 32,
+                  color: MinimalDesign.black.withValues(alpha: 0.6),
+                ),
+                MinimalDesign.verticalSpace(MinimalDesign.space2),
+                Text(
+                  'Unable to generate chord suggestions',
+                  style: MinimalDesign.body.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                MinimalDesign.verticalSpace(MinimalDesign.space1),
+                Text(
+                  'Try recording with clearer melody or stronger note definition',
+                  style: MinimalDesign.caption,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          MinimalDesign.verticalSpace(MinimalDesign.space3),
+          ElevatedButton(
+            onPressed: () {
+              _clearAnalysisState();
+            },
+            child: const Text('Record Again'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -456,28 +660,16 @@ class _RecorderPageState extends State<RecorderPage> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Cora'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: MinimalDesign.space3),
+              child: MinimalDesign.buildThemeToggle(widget.onThemeToggle),
+            ),
+          ],
         ),
         
         body: _isAnalyzing 
-            ? Container(
-                color: MinimalDesign.white.withOpacity(0.9),
-                child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(
-                        color: MinimalDesign.black,
-                        strokeWidth: 2,
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'Analyzing...',
-                        style: MinimalDesign.body,
-                      ),
-                    ],
-                  ),
-                ),
-              )
+            ? const MinimalAnalyzingAnimation()
             : SingleChildScrollView(
                 child: Column(
                   children: [
@@ -498,7 +690,9 @@ class _RecorderPageState extends State<RecorderPage> {
                       },
                     ),
                     
-                    if (_useMetronome && !(_isRecording || _waitingForCountIn))
+                    if (_useMetronome && 
+                        !(_isRecording || _waitingForCountIn) && 
+                        _path == null) // Hide when recording is available
                       MinimalDesign.section(
                         child: MinimalMetronomeControls(
                           enabled: _useMetronome,
@@ -520,10 +714,13 @@ class _RecorderPageState extends State<RecorderPage> {
                         ),
                       ),
                     
-                    if (_path != null && _suggestions.isEmpty && !_isAnalyzing)
+                    if (_path != null && !_analysisCompleted)
                       _buildMinimalPlaybackControls(),
                     
-                    if (_suggestions.isNotEmpty && !_isAnalyzing) ...[
+                    if (_analysisCompleted && _suggestions.isEmpty)
+                      _buildNoSuggestionsMessage(),
+                    
+                    if (_suggestions.isNotEmpty) ...[
                       if (_detectedKey != null)
                         _buildMinimalKeyDisplay(),
                       
@@ -547,6 +744,49 @@ class _RecorderPageState extends State<RecorderPage> {
                 ),
               ),
       ),
+    );
+  }
+
+  Widget _buildAnimatedAnalyzeButton() {
+    return AnimatedBuilder(
+      animation: _analyzeButtonAnimation,
+      builder: (context, child) {
+        return ElevatedButton(
+          onPressed: (_path != null && !_isAnalyzing) ? _analyzeRecording : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _isAnalyzing 
+                ? MinimalDesign.accent.withValues(alpha: 0.1 + 0.3 * _analyzeButtonAnimation.value)
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isAnalyzing) ...[
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(MinimalDesign.accent),
+                    value: null, // Indeterminate
+                  ),
+                ),
+                MinimalDesign.horizontalSpace(MinimalDesign.space2),
+                Text(
+                  'Analyzing...',
+                  style: TextStyle(
+                    color: MinimalDesign.accent,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ] else ...[
+                const Text('Analyze'),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
