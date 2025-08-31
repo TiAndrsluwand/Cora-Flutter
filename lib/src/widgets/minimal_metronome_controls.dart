@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme/minimal_design_system.dart';
 import '../sound/metronome_player.dart';
 
@@ -88,6 +87,11 @@ class _MinimalMetronomeControlsState extends State<MinimalMetronomeControls> {
           
           MinimalDesign.verticalSpace(MinimalDesign.space4),
           
+          // Continue During Recording Toggle
+          _buildRecordingToggle(),
+          
+          MinimalDesign.verticalSpace(MinimalDesign.space4),
+          
           // Start/Stop Button
           _buildPlayButton(),
         ],
@@ -127,7 +131,7 @@ class _MinimalMetronomeControlsState extends State<MinimalMetronomeControls> {
             activeTrackColor: MinimalDesign.black,
             inactiveTrackColor: MinimalDesign.lightGray,
             thumbColor: MinimalDesign.black,
-            overlayColor: MinimalDesign.black.withOpacity(0.1),
+            overlayColor: MinimalDesign.black.withValues(alpha: 0.1),
           ),
           child: Slider(
             value: widget.bpm.toDouble(),
@@ -207,6 +211,47 @@ class _MinimalMetronomeControlsState extends State<MinimalMetronomeControls> {
               );
             }).toList(),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecordingToggle() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Continue metronome during recording',
+                    style: MinimalDesign.body,
+                  ),
+                  MinimalDesign.verticalSpace(MinimalDesign.space1),
+                  Text(
+                    'Hear the beat while recording (not saved in audio)',
+                    style: MinimalDesign.small.copyWith(
+                      color: MinimalDesign.black.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            MinimalDesign.horizontalSpace(MinimalDesign.space2),
+            Switch(
+              value: MetronomePlayer.continueMetronomeDuringRecording,
+              onChanged: (value) {
+                MetronomePlayer.setContinueMetronomeDuringRecording(value);
+                setState(() {});
+              },
+              activeColor: MinimalDesign.accent,
+              inactiveThumbColor: MinimalDesign.black.withValues(alpha: 0.4),
+              inactiveTrackColor: MinimalDesign.lightGray,
+            ),
+          ],
         ),
       ],
     );

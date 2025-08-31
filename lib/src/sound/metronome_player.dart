@@ -46,7 +46,7 @@ class MetronomePlayer {
   static int _bpm = 120;
   static TimeSignature _timeSignature = const TimeSignature(4, 4);
   static bool _enabled = false;
-  static bool _continueMetronomeDuringRecording = true;
+  static bool _continueMetronomeDuringRecording = false;
   static double _volume = 0.8;
   
   // Continuous mode flag
@@ -75,25 +75,25 @@ class MetronomePlayer {
     try {
       final tempDir = await getTemporaryDirectory();
 
-      // Generate strong beat sound (1200Hz)
-      final strongBeatData = _synthesizeClickWav(1200.0, durationMs: 100);
+      // Generate strong beat sound (1200Hz) - SHORTER for less interference
+      final strongBeatData = _synthesizeClickWav(1200.0, durationMs: 50); // Reduced from 100ms
       final strongBeatFile = File('${tempDir.path}/metronome_strong.wav');
       await strongBeatFile.writeAsBytes(strongBeatData);
       _strongBeatPath = strongBeatFile.path;
 
-      // Generate weak beat sound (800Hz)
-      final weakBeatData = _synthesizeClickWav(800.0, durationMs: 100);
+      // Generate weak beat sound (800Hz) - SHORTER for less interference  
+      final weakBeatData = _synthesizeClickWav(800.0, durationMs: 50); // Reduced from 100ms
       final weakBeatFile = File('${tempDir.path}/metronome_weak.wav');
       await weakBeatFile.writeAsBytes(weakBeatData);
       _weakBeatPath = weakBeatFile.path;
 
-      // Load audio files into players ONCE (this creates ExoPlayerImpl instances)
+      // Load audio files into players with LOWER volume for recording compatibility
       await _strongBeatPlayer.setFilePath(_strongBeatPath!);
-      await _strongBeatPlayer.setVolume(_volume);
+      await _strongBeatPlayer.setVolume(_volume * 0.6); // Reduced volume during recording
       await _weakBeatPlayer.setFilePath(_weakBeatPath!);
-      await _weakBeatPlayer.setVolume(_volume);
+      await _weakBeatPlayer.setVolume(_volume * 0.6); // Reduced volume during recording
 
-      print('MetronomePlayer: Pre-generated and loaded metronome sounds');
+      print('MetronomePlayer: Pre-generated and loaded metronome sounds (recording-optimized)');
     } catch (e) {
       print('MetronomePlayer: Error generating sounds: $e');
     }
@@ -154,12 +154,21 @@ class MetronomePlayer {
 
   static void setContinueMetronomeDuringRecording(bool shouldContinue) {
     _continueMetronomeDuringRecording = shouldContinue;
+    print('MetronomePlayer: Continue metronome during recording set to: $shouldContinue');
   }
 
   static void setVolume(double newVolume) {
     _volume = newVolume.clamp(0.0, 1.0);
     _strongBeatPlayer.setVolume(_volume);
     _weakBeatPlayer.setVolume(_volume);
+  }
+
+  /// Lower metronome volume during recording to prevent interference
+  static void setRecordingMode(bool isRecording) {
+    final volumeMultiplier = isRecording ? 0.4 : 1.0; // Even lower during recording
+    _strongBeatPlayer.setVolume(_volume * volumeMultiplier);
+    _weakBeatPlayer.setVolume(_volume * volumeMultiplier);
+    print('MetronomePlayer: Recording mode ${isRecording ? "ON" : "OFF"}, volume: ${(_volume * volumeMultiplier).toStringAsFixed(2)}');
   }
 
   static void setBeatCallback(
@@ -202,6 +211,14 @@ class MetronomePlayer {
       await _weakBeatPlayer.stop();
     } catch (e) {
       print('MetronomePlayer: Error stopping players: $e');
+    }
+  }
+
+  /// Stops metronome specifically after recording ends
+  static Future<void> stopRecordingMetronome() async {
+    if (_phase == RecordingPhase.recording && _metronomeTimer != null) {
+      print('MetronomePlayer: Stopping metronome after recording ends');
+      await stopMetronome();
     }
   }
 
@@ -276,11 +293,15 @@ class MetronomePlayer {
           });
         }
 
-        // ALWAYS stop metronome after count-in to avoid memory leaks
-        timer.cancel();
-        _metronomeTimer = null;
-        print('MetronomePlayer: Stopping metronome after count-in');
-        return;
+        // Check if metronome should continue during recording
+        if (!_continueMetronomeDuringRecording) {
+          timer.cancel();
+          _metronomeTimer = null;
+          print('MetronomePlayer: Stopping metronome after count-in (user preference)');
+          return;
+        } else {
+          print('MetronomePlayer: Continuing metronome during recording (user preference)');
+        }
       }
       
       // Handle continuous mode - keep playing forever until manually stopped

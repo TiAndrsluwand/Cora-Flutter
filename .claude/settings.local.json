@@ -7,7 +7,12 @@
       "Bash(timeout 30 flutter run --debug)",
       "Bash(flutter build:*)",
       "Bash(flutter pub:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(flutter doctor:*)",
+      "WebSearch",
+      "Bash(git commit:*)",
+      "Bash(flutter test:*)"
     ],
     "deny": [],
     "ask": []

@@ -34,14 +34,14 @@ class PitchToNotes {
         curNote = n;
         curStart = t;
         curEnd = t;
-      } else if (n == curNote && (t - curEnd) <= 200) {
-        // Increased from 120ms to 200ms for more lenient merging
+      } else if (n == curNote && (t - curEnd) <= 300) {
+        // Further increased gap tolerance for natural singing/humming
         // same note within short gap -> extend
         curEnd = t;
       } else {
         final dur = math.max(0, curEnd - curStart);
-        if (dur >= 80) {
-          // Reduced from 100ms to 80ms minimum duration
+        if (dur >= 50) {
+          // Much shorter minimum duration for quick melodies
           merged.add(
               DiscreteNote(note: curNote, startMs: curStart, durationMs: dur));
         } else {
@@ -55,7 +55,7 @@ class PitchToNotes {
     // flush
     final dur = math.max(0, curEnd - curStart);
     if (curNote != null) {
-      if (dur >= 80) {
+      if (dur >= 50) {
         merged.add(
             DiscreteNote(note: curNote, startMs: curStart, durationMs: dur));
       } else {
@@ -64,7 +64,7 @@ class PitchToNotes {
     }
 
     print('PitchToNotes: Consolidated to ${merged.length} discrete notes');
-    print('  Filtered out $shortNotesFiltered short notes (< 80ms)');
+    print('  Filtered out $shortNotesFiltered short notes (< 50ms)');
     print(
         '  Retention rate: ${((merged.length / rawNotes) * 100).toStringAsFixed(1)}%');
 

@@ -6,15 +6,27 @@ void main() {
   runApp(const CoraApp());
 }
 
-class CoraApp extends StatelessWidget {
+class CoraApp extends StatefulWidget {
   const CoraApp({super.key});
+
+  @override
+  State<CoraApp> createState() => _CoraAppState();
+}
+
+class _CoraAppState extends State<CoraApp> {
+  
+  void _toggleTheme() {
+    setState(() {
+      MinimalDesign.setDarkMode(!MinimalDesign.isDarkMode);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Cora',
       theme: MinimalDesign.theme,
-      home: const RecorderPage(),
+      home: RecorderPage(onThemeToggle: _toggleTheme),
     );
   }
 }

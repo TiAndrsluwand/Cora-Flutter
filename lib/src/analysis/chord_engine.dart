@@ -50,7 +50,7 @@ class ChordSuggestionOptions {
   final double jazziness;
   const ChordSuggestionOptions({
     this.maxProgressions = 8,
-    this.minChordDuration = 800,
+    this.minChordDuration = 400, // Much more permissive for short melodies
     this.preferredProgressions = const [],
     this.extendedChords = true,
     this.jazziness = 0.3,
@@ -139,7 +139,8 @@ class ChordSuggestionEngine {
       }
     }
     if (current.isNotEmpty) segments.add(List.of(current));
-    if (segments.length < 2 && melody.length > 4) return _forceSegments(melody);
+    // Be more aggressive about creating segments for short melodies
+    if (segments.length < 2 && melody.length > 2) return _forceSegments(melody);
     return segments;
   }
 

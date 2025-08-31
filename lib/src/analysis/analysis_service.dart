@@ -81,6 +81,12 @@ class AnalysisService {
               ))
           .toList();
 
+      // If no progressions generated but we have notes, create simple fallback
+      if (uiProgs.isEmpty && noteNames.isNotEmpty) {
+        print('AnalysisService: No chord progressions generated, creating simple fallback based on key');
+        return _createSimpleFallback(keyLabel, isMinor);
+      }
+
       return AnalysisResult(
         detectedKey: '$keyLabel ${isMinor ? 'minor' : 'major'}',
         suggestions: uiProgs,
@@ -127,6 +133,51 @@ class AnalysisService {
       detectedKey: '$keyLabel ${isMinor ? 'minor' : 'major'}',
       suggestions: uiProgs,
     );
+  }
+
+  static AnalysisResult _createSimpleFallback(String keyLabel, bool isMinor) {
+    // Create basic chord progression based on detected key
+    final List<DetectedChord> chords;
+    final String progressionName;
+    
+    if (isMinor) {
+      // Simple minor progression: i - iv - V - i
+      progressionName = "Basic Minor Progression";
+      chords = [
+        DetectedChord(symbol: '${keyLabel}m', notes: _voiceChord([keyLabel, _getNoteAtInterval(keyLabel, 3), _getNoteAtInterval(keyLabel, 7)])),
+        DetectedChord(symbol: '${_getNoteAtInterval(keyLabel, 5)}m', notes: _voiceChord([_getNoteAtInterval(keyLabel, 5), _getNoteAtInterval(keyLabel, 8), _getNoteAtInterval(keyLabel, 12)])),
+        DetectedChord(symbol: _getNoteAtInterval(keyLabel, 7), notes: _voiceChord([_getNoteAtInterval(keyLabel, 7), _getNoteAtInterval(keyLabel, 11), _getNoteAtInterval(keyLabel, 14)])),
+        DetectedChord(symbol: '${keyLabel}m', notes: _voiceChord([keyLabel, _getNoteAtInterval(keyLabel, 3), _getNoteAtInterval(keyLabel, 7)])),
+      ];
+    } else {
+      // Simple major progression: I - IV - V - I
+      progressionName = "Basic Major Progression";
+      chords = [
+        DetectedChord(symbol: keyLabel, notes: _voiceChord([keyLabel, _getNoteAtInterval(keyLabel, 4), _getNoteAtInterval(keyLabel, 7)])),
+        DetectedChord(symbol: _getNoteAtInterval(keyLabel, 5), notes: _voiceChord([_getNoteAtInterval(keyLabel, 5), _getNoteAtInterval(keyLabel, 9), _getNoteAtInterval(keyLabel, 12)])),
+        DetectedChord(symbol: _getNoteAtInterval(keyLabel, 7), notes: _voiceChord([_getNoteAtInterval(keyLabel, 7), _getNoteAtInterval(keyLabel, 11), _getNoteAtInterval(keyLabel, 14)])),
+        DetectedChord(symbol: keyLabel, notes: _voiceChord([keyLabel, _getNoteAtInterval(keyLabel, 4), _getNoteAtInterval(keyLabel, 7)])),
+      ];
+    }
+    
+    final suggestion = ChordProgressionSuggestion(
+      name: progressionName,
+      key: '$keyLabel ${isMinor ? 'minor' : 'major'}',
+      chords: chords,
+    );
+    
+    return AnalysisResult(
+      detectedKey: '$keyLabel ${isMinor ? 'minor' : 'major'}',
+      suggestions: [suggestion],
+    );
+  }
+
+  static String _getNoteAtInterval(String rootNote, int semitones) {
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    final rootIndex = notes.indexOf(rootNote);
+    if (rootIndex == -1) return rootNote;
+    final targetIndex = (rootIndex + semitones) % 12;
+    return notes[targetIndex];
   }
 
   static List<String> _voiceChord(List<String> triad) {

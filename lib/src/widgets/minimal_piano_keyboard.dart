@@ -135,15 +135,38 @@ class _MinimalPianoKeyboardState extends State<MinimalPianoKeyboard> {
   Widget _buildWhiteKey(String keyName, String note) {
     final isActive = _isKeyActive(note);
     
+    // Enhanced piano colors with better active state visibility
+    Color whiteKeyColor;
+    Color borderColor;
+    Color textColor;
+    
+    if (isActive) {
+      // Active state - high contrast in both themes
+      whiteKeyColor = MinimalDesign.isDarkMode 
+          ? MinimalDesign.accent.withValues(alpha: 0.2)  // Blue tint for dark mode
+          : MinimalDesign.accent.withValues(alpha: 0.1); // Subtle blue tint for light mode
+      
+      borderColor = MinimalDesign.accent; // Blue accent border for active keys
+      textColor = MinimalDesign.accent;   // Blue text for active keys
+    } else {
+      // Inactive state - normal piano colors
+      whiteKeyColor = MinimalDesign.isDarkMode 
+          ? const Color(0xFFF5F5F5)  // Off-white for dark mode
+          : const Color(0xFFFFFFFF); // Pure white for light mode
+      
+      borderColor = MinimalDesign.lightGray;
+      textColor = MinimalDesign.gray;
+    }
+    
     return GestureDetector(
       onTap: () => _handleKeyPress(keyName),
       child: Container(
         width: 30,
         height: 80,
         decoration: BoxDecoration(
-          color: MinimalDesign.white,
+          color: whiteKeyColor,
           border: Border.all(
-            color: isActive ? MinimalDesign.black : MinimalDesign.lightGray,
+            color: borderColor,
             width: isActive ? 2 : 1,
           ),
         ),
@@ -154,8 +177,8 @@ class _MinimalPianoKeyboardState extends State<MinimalPianoKeyboard> {
             child: Text(
               note,
               style: MinimalDesign.small.copyWith(
-                color: isActive ? MinimalDesign.black : MinimalDesign.gray,
-                fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
+                color: textColor,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ),
@@ -204,10 +227,17 @@ class _MinimalPianoKeyboardState extends State<MinimalPianoKeyboard> {
           width: blackKeyWidth,
           height: 50,
           decoration: BoxDecoration(
-            color: isActive ? MinimalDesign.gray : MinimalDesign.black,
+            color: isActive 
+                ? MinimalDesign.accent.withValues(alpha: 0.8) // Blue accent for active black keys
+                : const Color(0xFF2C2C2E), // Dark gray for inactive black keys
             border: isActive 
-                ? Border.all(color: MinimalDesign.black, width: 2)
-                : null,
+                ? Border.all(color: MinimalDesign.accent, width: 2)
+                : Border.all(
+                    color: MinimalDesign.isDarkMode 
+                        ? const Color(0xFF48484A) 
+                        : const Color(0xFF1C1C1E), 
+                    width: 1,
+                  ),
           ),
           child: Align(
             alignment: Alignment.bottomCenter,
@@ -216,8 +246,9 @@ class _MinimalPianoKeyboardState extends State<MinimalPianoKeyboard> {
               child: Text(
                 note.replaceAll('#', '♯'),
                 style: MinimalDesign.small.copyWith(
-                  color: MinimalDesign.white,
+                  color: const Color(0xFFFFFFFF), // Always white text on black keys
                   fontSize: 10,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
             ),

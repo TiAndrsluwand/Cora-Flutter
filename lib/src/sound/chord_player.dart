@@ -3,20 +3,19 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'audio_service.dart';
 
 class ChordPlayer {
-  static final AudioPlayer _player = AudioPlayer();
   static bool _initialized = false;
 
   static Future<void> ensureLoaded(BuildContext context) async {
     if (_initialized) return;
     try {
-      // just_audio doesn't need explicit initialization
-      await _player.setVolume(1.0);
+      // Initialize audio service if not already done
+      await AudioService.instance.initialize();
       _initialized = true;
-      print('ChordPlayer: Initialized successfully with just_audio');
+      print('ChordPlayer: Initialized successfully with AudioService');
     } catch (e) {
       print('ChordPlayer: Initialization failed: $e');
       _initialized = false;
@@ -37,10 +36,6 @@ class ChordPlayer {
     }
 
     try {
-      print('ChordPlayer: Stopping any previous playback...');
-      // Stop any current playback
-      await _player.stop();
-
       print('ChordPlayer: Synthesizing chord...');
       final data = _synthesizePianoChordWav(notes, durationMs: 1500);
       
@@ -50,18 +45,16 @@ class ChordPlayer {
       }
       
       print('ChordPlayer: Creating temporary WAV file...');
-      // Write WAV data to temporary file for just_audio
+      // Write WAV data to temporary file
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/chord_${DateTime.now().millisecondsSinceEpoch}.wav');
       await tempFile.writeAsBytes(data);
       
-      print('ChordPlayer: Playing from file: ${tempFile.path}');
-      // Set volume and play from file
-      await _player.setVolume(1.0);
-      await _player.setFilePath(tempFile.path);
-      await _player.play();
+      print('ChordPlayer: Playing via AudioService...');
+      // Use centralized audio service
+      await AudioService.instance.playChord(tempFile.path);
       
-      print('ChordPlayer: Playback started successfully with just_audio');
+      print('ChordPlayer: Playback started successfully');
       
       // Clean up temporary file after playback
       Timer(const Duration(seconds: 3), () async {
@@ -92,8 +85,7 @@ class ChordPlayer {
         final tempFile = File('${tempDir.path}/test_tone.wav');
         await tempFile.writeAsBytes(testData);
         
-        await _player.setFilePath(tempFile.path);
-        await _player.play();
+        await AudioService.instance.playChord(tempFile.path);
         print('ChordPlayer: Test tone played');
         
         // Clean up after test
@@ -318,7 +310,7 @@ class ChordPlayer {
 
   static Future<void> stopAnyPlayback() async {
     try {
-      await _player.stop();
+      await AudioService.instance.stopAll();
       print('ChordPlayer: Stopped any current playback');
     } catch (e) {
       print('ChordPlayer: Error stopping playback: $e');
@@ -327,10 +319,8 @@ class ChordPlayer {
 
   static Future<void> dispose() async {
     try {
-      await _player.stop();
-      await _player.dispose();
       _initialized = false;
-      print('ChordPlayer: Disposed successfully');
+      print('ChordPlayer: Disposed successfully (managed by AudioService)');
     } catch (e) {
       print('ChordPlayer: Disposal error: $e');
     }

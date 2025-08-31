@@ -333,7 +333,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     }
 
     try {
-      // Ensure minimum animation visibility (1.5 seconds)
+      // Ensure minimum animation visibility (4.5 seconds for user enjoyment)
       final analysisStartTime = DateTime.now();
       
       final result = await AnalysisService.analyzeRecording(_path!);
@@ -343,11 +343,11 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       
       DebugLogger.debug('Analysis completed in ${analysisDuration.inMilliseconds}ms');
       
-      // Ensure minimum 1500ms for animation visibility
-      const minDuration = Duration(milliseconds: 1500);
+      // Ensure minimum 4500ms for animation visibility and user enjoyment
+      const minDuration = Duration(milliseconds: 4500);
       if (analysisDuration < minDuration) {
         final remainingTime = minDuration - analysisDuration;
-        DebugLogger.debug('Adding ${remainingTime.inMilliseconds}ms delay for animation visibility');
+        DebugLogger.debug('Adding ${remainingTime.inMilliseconds}ms delay for animation enjoyment');
         await Future.delayed(remainingTime);
       }
       
@@ -365,8 +365,8 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     } catch (e) {
       DebugLogger.debug('Analysis failed with error: $e');
       
-      // Ensure minimum animation time even on error
-      await Future.delayed(const Duration(milliseconds: 1500));
+      // Ensure minimum animation time even on error (4.5 seconds for consistency)
+      await Future.delayed(const Duration(milliseconds: 4500));
       
       if (mounted) {
         _analyzeButtonController.stop();

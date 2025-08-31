@@ -21,8 +21,8 @@ class PitchDetector {
 
   const PitchDetector({
     this.minVolume =
-        0.005, // Reduced from 0.01 - was too high for quiet melodies
-    this.minConfidence = 0.6, // Reduced from 0.8 - was too restrictive
+        0.001, // Further reduced for very quiet recordings (phone mic)
+    this.minConfidence = 0.4, // Much more permissive for real-world recordings
     this.windowSize = 2048,
     this.smoothing = 0.8,
   });
