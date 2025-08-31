@@ -12,7 +12,8 @@
       "Bash(flutter doctor:*)",
       "WebSearch",
       "Bash(git commit:*)",
-      "Bash(flutter test:*)"
+      "Bash(flutter test:*)",
+      "WebFetch(domain:pub.dev)"
     ],
     "deny": [],
     "ask": []

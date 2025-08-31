@@ -188,8 +188,8 @@ class MinimalDesign {
           child: Icon(
             key: ValueKey(isDarkMode),
             isDarkMode 
-                ? Icons.dark_mode_outlined 
-                : Icons.light_mode_outlined,
+                ? Icons.light_mode_outlined  // Sol en modo oscuro (cambiar a claro)
+                : Icons.dark_mode_outlined,  // Luna en modo claro (cambiar a oscuro)
             size: 14,
             color: primary.withValues(alpha: 0.8),
           ),

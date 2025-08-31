@@ -64,7 +64,7 @@ lib/
 - ✅ **True Minimalism**: Apple/Dieter Rams design principles
 - ✅ **Clean Interface**: Black, white, gray with single blue accent
 - ✅ **BPM Slider**: Efficient tempo control (60-200 BPM)
-- ✅ **Animated Feedback**: Pulsing dots and progress during analysis
+- ✅ **Elegant Wave Animation**: Flowing sine waves during analysis (4.5s duration)
 - ✅ **No Visual Clutter**: Every element serves a purpose
 - ✅ **Responsive Design**: Optimized for mobile recording workflow
 

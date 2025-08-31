@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
@@ -12,10 +14,14 @@ import '../analysis/analysis_service.dart';
 import '../audio/wav_decoder.dart';
 import '../analysis/chord_progression_suggestion.dart';
 import '../analysis/detected_chord.dart';
+import '../analysis/simple_sheet_music_service.dart';
+import '../audio/pitch_to_notes.dart';
+import '../audio/pitch_detector.dart';
 import '../widgets/minimal_piano_keyboard.dart';
 import '../widgets/minimal_recording_interface.dart';
 import '../widgets/minimal_metronome_controls.dart';
 import '../widgets/minimal_analyzing_animation.dart';
+import '../widgets/simple_sheet_music_display.dart';
 import '../sound/metronome_player.dart';
 import '../theme/minimal_design_system.dart';
 import '../utils/debug_logger.dart';
@@ -42,6 +48,8 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   bool _analysisCompleted = false;
   String? _detectedKey;
   List<ChordProgressionSuggestion> _suggestions = const [];
+  List<DiscreteNote> _extractedMelody = const [];
+  SheetMusicData? _sheetMusicData;
 
   // Recording diagnostics
   double? _lastRmsDb;
@@ -289,6 +297,8 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       _selectedChord = null;
       _isAnalyzing = false;
       _analysisCompleted = false;
+      _extractedMelody = const [];
+      _sheetMusicData = null;
     });
   }
 
@@ -336,7 +346,8 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       // Ensure minimum animation visibility (4.5 seconds for user enjoyment)
       final analysisStartTime = DateTime.now();
       
-      final result = await AnalysisService.analyzeRecording(_path!);
+      // Run analysis in background isolate to prevent blocking animations
+      final result = await compute(_analyzeRecordingIsolate, _path!);
       
       final analysisEndTime = DateTime.now();
       final analysisDuration = analysisEndTime.difference(analysisStartTime);
@@ -354,6 +365,10 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       if (mounted) {
         _analyzeButtonController.stop();
         _analyzeButtonController.reset();
+        
+        // Extract melody for sheet music generation (also in background)
+        await _extractMelodyFromRecordingIsolate();
+        
         setState(() {
           _detectedKey = result.detectedKey;
           _suggestions = result.suggestions;
@@ -430,6 +445,59 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     }
   }
 
+  /// Extract melody notes from the recorded file for sheet music generation
+  Future<void> _extractMelodyFromRecordingIsolate() async {
+    if (_path == null) return;
+
+    try {
+      DebugLogger.debug('Extracting melody from recording for sheet music (background)');
+      
+      // Run melody extraction in background isolate to prevent blocking animations
+      final notes = await compute(_extractMelodyIsolate, _path!);
+      
+      _extractedMelody = notes;
+      DebugLogger.debug('Extracted ${notes.length} melody notes for sheet music');
+      
+    } catch (e) {
+      DebugLogger.debug('Error extracting melody: $e');
+      _extractedMelody = const [];
+    }
+  }
+
+  /// Generate sheet music from extracted melody
+  Future<void> _generateSheetMusic() async {
+    if (_extractedMelody.isEmpty || _detectedKey == null) {
+      _showErrorSnackBar('No melody available for sheet music generation');
+      return;
+    }
+
+    try {
+      DebugLogger.debug('Generating sheet music from ${_extractedMelody.length} notes');
+      
+      // Generate sheet music data
+      final sheetMusic = SimpleSheetMusicService.convertMelodyToSheetMusic(
+        _extractedMelody,
+        _detectedKey!,
+        bpm: MetronomePlayer.bpm,
+      );
+      
+      setState(() {
+        _sheetMusicData = sheetMusic;
+      });
+      
+      // Show sheet music modal
+      if (mounted && _sheetMusicData != null) {
+        await SimpleSheetMusicModal.show(context, _sheetMusicData!);
+      }
+      
+      DebugLogger.debug('Sheet music generated and displayed');
+      
+    } catch (e) {
+      DebugLogger.debug('Error generating sheet music: $e');
+      _showErrorSnackBar('Failed to generate sheet music: $e');
+    }
+  }
+
   /// Clear current recording and return to recording state
   Future<void> _recordNew() async {
     try {
@@ -445,12 +513,47 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         _selectedChord = null;
         _lastRmsDb = null;
         _isPlayingRecording = false;
+        _extractedMelody = const [];
+        _sheetMusicData = null;
       });
       
       DebugLogger.debug('Cleared recording - ready for new recording');
     } catch (e) {
       DebugLogger.debug('Error clearing recording: $e');
       _showErrorSnackBar('Failed to prepare for new recording');
+    }
+  }
+
+  /// Static function to run analysis in background isolate
+  static Future<AnalysisResult> _analyzeRecordingIsolate(String filePath) async {
+    // This runs in a separate isolate to prevent blocking UI
+    return await AnalysisService.analyzeRecording(filePath);
+  }
+
+  /// Static function to extract melody in background isolate
+  static Future<List<DiscreteNote>> _extractMelodyIsolate(String filePath) async {
+    try {
+      // Use the same pipeline as analysis to extract melody
+      final bytes = await File(filePath).readAsBytes();
+      final wav = WavDecoder.decode(bytes);
+      
+      if (wav == null || wav.samples.isEmpty) {
+        return const [];
+      }
+
+      // Extract pitches and convert to notes (same as analysis)
+      const detector = PitchDetector();
+      final pitches = detector.analyze(wav.samples, wav.sampleRate.toDouble());
+      
+      if (pitches.isEmpty) {
+        return const [];
+      }
+
+      final notes = PitchToNotes.consolidate(pitches);
+      return notes;
+      
+    } catch (e) {
+      return const [];
     }
   }
 
@@ -530,9 +633,50 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Key: $_detectedKey',
-            style: MinimalDesign.heading,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                'Key: $_detectedKey',
+                style: MinimalDesign.heading,
+              ),
+              // Sheet Music Button - Only show if melody was extracted
+              if (_extractedMelody.isNotEmpty)
+                ElevatedButton(
+                  onPressed: _generateSheetMusic,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MinimalDesign.white,
+                    foregroundColor: MinimalDesign.black,
+                    side: BorderSide(
+                      color: MinimalDesign.black,
+                      width: 1,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: MinimalDesign.space3,
+                      vertical: MinimalDesign.space2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.music_note,
+                        size: 18,
+                        color: MinimalDesign.black,
+                      ),
+                      const SizedBox(width: MinimalDesign.space1),
+                      const Text(
+                        'Create Sheet Music',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
           MinimalDesign.verticalSpace(MinimalDesign.space2),
         ],
