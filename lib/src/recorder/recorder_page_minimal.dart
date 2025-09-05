@@ -580,11 +580,21 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       
       // DIRECT PLAYBACK TEST - Bypass sheet music completely
       print('=== DIRECT MELODY PLAYBACK (NO SHEET MUSIC) ===');
-      print('Playing DIRECT extracted melody notes:');
+      print('Playing DIRECT extracted melody notes (DiscreteNote objects):');
       for (int i = 0; i < _extractedMelody.length; i++) {
         final note = _extractedMelody[i];
         print('Direct Note $i: ${note.note} at ${note.startMs}ms for ${note.durationMs}ms');
       }
+      
+      // Show what sheet music generated vs what we're actually playing
+      if (_sheetMusicData != null) {
+        print('--- COMPARISON: DiscreteNotes vs Sheet Music ---');
+        print('PLAYING (DiscreteNotes): ${_extractedMelody.map((n) => '${n.note}@${n.startMs}ms').join(' → ')}');
+        print('SHEET (converted):       ${_sheetMusicData!.notes.map((n) => '${n.displayNote}@${n.startBeat}beat').join(' → ')}');
+        print('--- END COMPARISON ---');
+      }
+      
+      print('IMPORTANT: MelodyPlayer receives DiscreteNotes directly, NOT sheet music!');
       print('=== END DIRECT MELODY DEBUG ===');
       
       DebugLogger.debug('Playing melody with notes: ${_extractedMelody.map((n) => '${n.note}(${n.startMs}ms,${n.durationMs}ms)').join(', ')}');
@@ -659,14 +669,14 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   void _createTimingValidationTest() {
     print('=== CREATING TIMING VALIDATION TEST ===');
     
-    // Create a simple test melody with known timing
+    // Create a simple test melody with known timing - IDENTICAL TO WHAT YOU RECORDED
     final testMelody = [
-      DiscreteNote(note: 'C', startMs: 0, durationMs: 1000),     // 0-1 seconds
-      DiscreteNote(note: 'D', startMs: 1500, durationMs: 1000), // 1.5-2.5 seconds (with 500ms gap)  
-      DiscreteNote(note: 'E', startMs: 3000, durationMs: 1000), // 3-4 seconds (with 500ms gap)
+      DiscreteNote(note: 'C', startMs: 0, durationMs: 1000),     // 0-1 seconds: C
+      DiscreteNote(note: 'D', startMs: 1500, durationMs: 1000), // 1.5-2.5 seconds: D (with 500ms gap)  
+      DiscreteNote(note: 'E', startMs: 3000, durationMs: 1000), // 3-4 seconds: E (with 500ms gap)
     ];
     
-    print('Test melody timing:');
+    print('Test melody timing (what MelodyPlayer will receive):');
     for (int i = 0; i < testMelody.length; i++) {
       final note = testMelody[i];
       print('Test Note $i: ${note.note} at ${(note.startMs/1000).toStringAsFixed(1)}s for ${(note.durationMs/1000).toStringAsFixed(1)}s');
@@ -679,12 +689,48 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     }
     
     // Temporarily replace extracted melody with test melody
-    print('REPLACING extracted melody with test melody for validation...');
+    print('REPLACING extracted melody with KNOWN GOOD test melody for validation...');
+    print('This bypasses ALL extraction issues and tests ONLY MelodyPlayer synthesis.');
     _extractedMelody = testMelody;
     
-    print('Expected playback: C at 0s, silence 1-1.5s, D at 1.5s, silence 2.5-3s, E at 3s');
-    print('Listen carefully and verify timing matches exactly!');
+    print('🎵 EXPECTED PLAYBACK SEQUENCE:');
+    print('  0.0s: C note starts');
+    print('  1.0s: C note ends, silence begins');
+    print('  1.5s: D note starts');  
+    print('  2.5s: D note ends, silence begins');
+    print('  3.0s: E note starts');
+    print('  4.0s: E note ends');
+    print('');
+    print('🎧 LISTEN: If timing is wrong, the problem is in MelodyPlayer synthesis');
+    print('🎧 LISTEN: If timing is correct, the problem is in note extraction/consolidation');
     print('=== END TIMING VALIDATION TEST ===');
+  }
+  
+  /// Force a manual melody for testing (call this method to override extracted melody)
+  void _forceKnownMelody() {
+    print('=== FORCING KNOWN MELODY FOR COMPARISON ===');
+    
+    // You can modify these notes to match exactly what you recorded
+    // Format: DiscreteNote(note: 'NOTE_NAME', startMs: START_TIME, durationMs: DURATION)
+    final manualMelody = [
+      // Example: If you recorded C-E-G at 1 second intervals:
+      DiscreteNote(note: 'C', startMs: 0, durationMs: 800),      // C at 0s
+      DiscreteNote(note: 'E', startMs: 1000, durationMs: 800),  // E at 1s  
+      DiscreteNote(note: 'G', startMs: 2000, durationMs: 800),  // G at 2s
+      
+      // TODO: Replace these with your actual recorded sequence
+      // If you recorded different notes, change them here
+    ];
+    
+    print('Manual melody (edit this to match your recording):');
+    for (int i = 0; i < manualMelody.length; i++) {
+      final note = manualMelody[i];
+      print('Manual Note $i: ${note.note} at ${(note.startMs/1000).toStringAsFixed(1)}s for ${(note.durationMs/1000).toStringAsFixed(1)}s');
+    }
+    
+    _extractedMelody = manualMelody;
+    print('MELODY REPLACED: Now play melody to test if MelodyPlayer synthesis works correctly');
+    print('=== END FORCED MELODY ===');
   }
 
   /// Extract melody notes from the recorded file for sheet music generation
