@@ -240,17 +240,7 @@ class _MinimalMetronomeControlsState extends State<MinimalMetronomeControls> {
                 ],
               ),
             ),
-            MinimalDesign.horizontalSpace(MinimalDesign.space2),
-            Switch(
-              value: MetronomePlayer.continueMetronomeDuringRecording,
-              onChanged: (value) {
-                MetronomePlayer.setContinueMetronomeDuringRecording(value);
-                setState(() {});
-              },
-              activeColor: MinimalDesign.accent,
-              inactiveThumbColor: MinimalDesign.black.withValues(alpha: 0.4),
-              inactiveTrackColor: MinimalDesign.lightGray,
-            ),
+            // Continue during recording option removed - handled internally
           ],
         ),
       ],

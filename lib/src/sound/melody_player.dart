@@ -81,25 +81,32 @@ class MelodyPlayer {
   
   static Future<void> _playTestMelody() async {
     try {
-      print('MelodyPlayer: Playing test melody C-D-E...');
-      // Generate a simple test melody
+      print('MelodyPlayer: Playing PRECISION test melody C-D-E-F...');
+      // Generate a PRECISION test melody for timing validation
       final testMelody = [
-        DiscreteNote(note: 'C', startMs: 0, durationMs: 500),
-        DiscreteNote(note: 'D', startMs: 500, durationMs: 500),
-        DiscreteNote(note: 'E', startMs: 1000, durationMs: 500),
+        DiscreteNote(note: 'C', startMs: 0, durationMs: 1000),     // 0-1 seconds
+        DiscreteNote(note: 'D', startMs: 1000, durationMs: 1000), // 1-2 seconds  
+        DiscreteNote(note: 'E', startMs: 2000, durationMs: 1000), // 2-3 seconds
+        DiscreteNote(note: 'F', startMs: 3000, durationMs: 1000), // 3-4 seconds
       ];
+      
+      print('MelodyPlayer: Test melody timing validation:');
+      for (int i = 0; i < testMelody.length; i++) {
+        final note = testMelody[i];
+        print('  Note $i: ${note.note} should play at ${note.startMs / 1000}s for ${note.durationMs / 1000}s');
+      }
       
       final testData = _synthesizeMelodyWav(testMelody);
       if (testData.isNotEmpty) {
         final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/test_melody.wav');
+        final tempFile = File('${tempDir.path}/test_melody_timing.wav');
         await tempFile.writeAsBytes(testData);
         
         await AudioService.instance.playMelody(tempFile.path);
-        print('MelodyPlayer: Test melody played');
+        print('MelodyPlayer: TIMING TEST - Listen carefully: C at 0s, D at 1s, E at 2s, F at 3s');
         
         // Clean up after test
-        Timer(const Duration(seconds: 3), () async {
+        Timer(const Duration(seconds: 6), () async {
           try {
             if (await tempFile.exists()) await tempFile.delete();
           } catch (_) {}
@@ -182,7 +189,7 @@ class MelodyPlayer {
     return null;
   }
 
-  static Uint8List _synthesizeMelodyWav(List<DiscreteNote> melody, {int sampleRate = 44100}) {
+  static Uint8List _synthesizeMelodyWav(List<DiscreteNote> melody, {int sampleRate = 22050}) { // FIXED: Match recording sample rate!
     print('MelodyPlayer: Synthesizing melody with ${melody.length} notes');
     
     if (melody.isEmpty) {
@@ -195,21 +202,41 @@ class MelodyPlayer {
     final frameCount = ((totalDurationMs / 1000) * sampleRate).round();
     final pcm = Int16List(frameCount);
     
-    print('MelodyPlayer: Total duration: ${totalDurationMs}ms, Frames: $frameCount');
+    print('MelodyPlayer: Total duration: ${totalDurationMs}ms, Frames: $frameCount, Sample rate: ${sampleRate}Hz');
+    print('=== MELODY SYNTHESIS DEBUG ===');
 
     // Synthesize each note at its exact timing
-    for (final note in melody) {
+    for (int noteIndex = 0; noteIndex < melody.length; noteIndex++) {
+      final note = melody[noteIndex];
       final frequency = _noteNameToFrequency(note.note);
       if (frequency == null) {
         print('MelodyPlayer: Skipping unparseable note: ${note.note}');
         continue;
       }
 
-      print('MelodyPlayer: Synthesizing ${note.note} (${frequency.toStringAsFixed(1)}Hz) at ${note.startMs}ms for ${note.durationMs}ms');
-
+      // CRITICAL FRAME CALCULATIONS
       final startFrame = ((note.startMs / 1000) * sampleRate).round();
       final durationFrames = ((note.durationMs / 1000) * sampleRate).round();
       final endFrame = (startFrame + durationFrames).clamp(0, frameCount);
+      
+      // Calculate timing in seconds for validation
+      final startSeconds = note.startMs / 1000.0;
+      final durationSeconds = note.durationMs / 1000.0;
+      final endSeconds = startSeconds + durationSeconds;
+      
+      print('Note $noteIndex: ${note.note} (${frequency.toStringAsFixed(1)}Hz)');
+      print('  Original timing: ${note.startMs}ms - ${note.startMs + note.durationMs}ms (${note.durationMs}ms duration)');
+      print('  Frame calculation: ${startFrame} - ${endFrame} (${durationFrames} frames)');
+      print('  Validated timing: ${startSeconds.toStringAsFixed(3)}s - ${endSeconds.toStringAsFixed(3)}s');
+      
+      // Check for frame positioning errors
+      if (startFrame >= frameCount) {
+        print('  WARNING: Start frame ${startFrame} exceeds buffer size ${frameCount}!');
+        continue;
+      }
+      if (endFrame > frameCount) {
+        print('  WARNING: End frame ${endFrame} exceeds buffer size ${frameCount}, clamping to ${frameCount}');
+      }
 
       // Synthesize this note
       for (int i = startFrame; i < endFrame; i++) {
@@ -240,8 +267,11 @@ class MelodyPlayer {
         pcm[i] = (mixed * 32767).round();
       }
     }
-
+    
+    print('=== END MELODY SYNTHESIS DEBUG ===');
     print('MelodyPlayer: Synthesis complete, creating WAV file');
+    print('MelodyPlayer: Final buffer size: ${pcm.length} samples (${(pcm.length / sampleRate).toStringAsFixed(3)}s duration)');
+    
     return _wrapPcm16ToWav(pcm, sampleRate: sampleRate, numChannels: 1);
   }
 

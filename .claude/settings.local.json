@@ -13,7 +13,10 @@
       "WebSearch",
       "Bash(git commit:*)",
       "Bash(flutter test:*)",
-      "WebFetch(domain:pub.dev)"
+      "WebFetch(domain:pub.dev)",
+      "Bash(sed:*)",
+      "Bash(q)",
+      "Bash(r)"
     ],
     "deny": [],
     "ask": []

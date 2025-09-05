@@ -46,7 +46,7 @@ class MetronomePlayer {
   static int _bpm = 120;
   static TimeSignature _timeSignature = const TimeSignature(4, 4);
   static bool _enabled = false;
-  static bool _continueMetronomeDuringRecording = false;
+  static bool _continueMetronomeDuringRecording = true;
   static double _volume = 0.8;
   
   // Continuous mode flag
@@ -261,12 +261,29 @@ class MetronomePlayer {
     }
   }
 
-  /// Stops metronome specifically after recording ends
+  /// UNIFIED: Stops metronome specifically after recording ends - handles all recording states
   static Future<void> stopRecordingMetronome() async {
-    if (_phase == RecordingPhase.recording && _metronomeTimer != null) {
-      print('MetronomePlayer: Stopping metronome after recording ends');
-      await stopMetronome();
+    print('MetronomePlayer: Stopping recording metronome - Phase: $_phase, Timer: ${_metronomeTimer != null}');
+    
+    // Stop metronome regardless of phase to avoid state inconsistencies
+    if (_metronomeTimer != null) {
+      _metronomeTimer?.cancel();
+      _metronomeTimer = null;
+      
+      try {
+        await _strongBeatPlayer.stop();
+        await _weakBeatPlayer.stop();
+      } catch (e) {
+        print('MetronomePlayer: Error stopping players during recording stop: $e');
+      }
     }
+    
+    // Reset recording state
+    _phase = RecordingPhase.idle;
+    _currentBeat = 0;
+    _isInContinuousMode = false;
+    
+    print('MetronomePlayer: Recording metronome stopped successfully');
   }
 
   /// Starts continuous metronome for real-time adjustability
@@ -303,7 +320,7 @@ class MetronomePlayer {
   /// Internal method to start the metronome timer
   static Future<void> _startMetronome() async {
     // Play first beat immediately
-    await _playBeat(isStrongBeat: true);
+    _playBeat(isStrongBeat: true);
     _currentBeat = 1;
     _notifyBeat();
 
@@ -315,12 +332,14 @@ class MetronomePlayer {
   static void _startMetronomeTimer() {
     _metronomeTimer?.cancel();
 
-    final beatDurationMs = (60000 / _bpm).round();
+    // Use microsecond precision for better timing accuracy
+    final beatDurationMicros = (60000000 / _bpm).round();
+    final beatDurationMs = beatDurationMicros ~/ 1000;
     print(
         'MetronomePlayer: Starting metronome timer at $_bpm BPM (${beatDurationMs}ms per beat)');
 
     _metronomeTimer =
-        Timer.periodic(Duration(milliseconds: beatDurationMs), (timer) {
+        Timer.periodic(Duration(microseconds: beatDurationMicros), (timer) {
       _currentBeat++;
 
       // Handle count-in mode completion
@@ -382,14 +401,16 @@ class MetronomePlayer {
   }
 
   /// Plays a single metronome beat using pre-loaded players
-  static Future<void> _playBeat({required bool isStrongBeat}) async {
+  static void _playBeat({required bool isStrongBeat}) {
     try {
       print('MetronomePlayer: Beat ${isStrongBeat ? 'STRONG' : 'weak'}');
 
-      // Re-enabled audio now that threading is fixed
+      // Optimized playback - use fire-and-forget for better timing
       final player = isStrongBeat ? _strongBeatPlayer : _weakBeatPlayer;
-      await player.seek(Duration.zero);
-      await player.play();
+      
+      // Non-blocking seek and play for precise timing
+      player.seek(Duration.zero).catchError((e) => print('Seek error: $e'));
+      player.play().catchError((e) => print('Play error: $e'));
     } catch (e) {
       print('MetronomePlayer: Error playing beat: $e');
     }

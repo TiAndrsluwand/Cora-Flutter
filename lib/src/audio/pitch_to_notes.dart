@@ -71,6 +71,29 @@ class PitchToNotes {
     if (merged.isNotEmpty) {
       print(
           '  Final notes: ${merged.map((n) => '${n.note}(${n.durationMs}ms)').join(', ')}');
+      
+      // DETAILED TIMING DEBUG - Critical for melody playback accuracy
+      print('=== DETAILED NOTE TIMING EXTRACTION ===');
+      for (int i = 0; i < merged.length; i++) {
+        final note = merged[i];
+        final endMs = note.startMs + note.durationMs;
+        print('Note $i: ${note.note} | Start: ${note.startMs}ms | Duration: ${note.durationMs}ms | End: ${endMs}ms');
+        
+        // Check for gaps between consecutive notes
+        if (i > 0) {
+          final prevNote = merged[i - 1];
+          final prevEndMs = prevNote.startMs + prevNote.durationMs;
+          final gapMs = note.startMs - prevEndMs;
+          if (gapMs > 0) {
+            print('  → Gap from previous note: ${gapMs}ms');
+          } else if (gapMs < 0) {
+            print('  → OVERLAP with previous note: ${-gapMs}ms');
+          }
+        }
+      }
+      print('Total melody duration: ${merged.isNotEmpty ? merged.last.startMs + merged.last.durationMs : 0}ms');
+      print('=== END TIMING DEBUG ===');
+      
       final noteCount = <String, int>{};
       for (final n in merged) {
         noteCount[n.note] = (noteCount[n.note] ?? 0) + 1;

@@ -568,6 +568,9 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       // Initialize MelodyPlayer if needed
       await MelodyPlayer.ensureLoaded(context);
       
+      // CRITICAL TIMING COMPARISON DEBUG
+      _debugCompareTiming();
+      
       DebugLogger.debug('Playing melody with notes: ${_extractedMelody.map((n) => '${n.note}(${n.startMs}ms,${n.durationMs}ms)').join(', ')}');
       
       // Play the melody through MelodyPlayer which will use AudioService
@@ -578,6 +581,62 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       DebugLogger.debug('Error preparing melody: $e');
       rethrow;
     }
+  }
+  
+  /// Debug method to compare timing between extracted melody and sheet music
+  void _debugCompareTiming() {
+    if (_extractedMelody.isEmpty) return;
+    
+    print('=== MELODY TIMING COMPARISON DEBUG ===');
+    print('Total extracted notes: ${_extractedMelody.length}');
+    
+    if (_sheetMusicData != null && _sheetMusicData!.notes.isNotEmpty) {
+      print('Total sheet music notes: ${_sheetMusicData!.notes.length}');
+      
+      final minLength = math.min(_extractedMelody.length, _sheetMusicData!.notes.length);
+      
+      for (int i = 0; i < minLength; i++) {
+        final extractedNote = _extractedMelody[i];
+        final sheetNote = _sheetMusicData!.notes[i];
+        
+        print('Note $i:');
+        print('  Extracted: ${extractedNote.note} | ${extractedNote.startMs}ms-${extractedNote.startMs + extractedNote.durationMs}ms (${extractedNote.durationMs}ms)');
+        print('  Sheet:     ${sheetNote.displayNote} | Beat ${sheetNote.startBeat}-${sheetNote.startBeat + sheetNote.duration.durationRatio} (${sheetNote.duration.name} ${sheetNote.duration.durationRatio} beats)');
+        
+        // Calculate expected timing if sheet music timing is correct
+        final expectedStartMs = (sheetNote.startBeat * (60000 / 120)).round(); // Assuming 120 BPM
+        final expectedDurationMs = (sheetNote.duration.durationRatio * (60000 / 120)).round();
+        print('  Expected:  ${sheetNote.displayNote} | ${expectedStartMs}ms-${expectedStartMs + expectedDurationMs}ms (${expectedDurationMs}ms @ 120BPM)');
+        
+        // Check for timing discrepancies
+        final startDiff = (extractedNote.startMs - expectedStartMs).abs();
+        final durationDiff = (extractedNote.durationMs - expectedDurationMs).abs();
+        
+        if (startDiff > 100) { // More than 100ms difference
+          print('  WARNING: Start timing differs by ${startDiff}ms');
+        }
+        if (durationDiff > 100) {
+          print('  WARNING: Duration differs by ${durationDiff}ms');
+        }
+      }
+      
+      if (_extractedMelody.length != _sheetMusicData!.notes.length) {
+        print('WARNING: Note count mismatch! Extracted: ${_extractedMelody.length}, Sheet: ${_sheetMusicData!.notes.length}');
+      }
+    } else {
+      print('No sheet music data available for comparison');
+    }
+    
+    // Show melody timeline
+    print('--- MELODY TIMELINE ---');
+    for (int i = 0; i < _extractedMelody.length; i++) {
+      final note = _extractedMelody[i];
+      final startSec = note.startMs / 1000.0;
+      final endSec = (note.startMs + note.durationMs) / 1000.0;
+      print('${startSec.toStringAsFixed(2)}s-${endSec.toStringAsFixed(2)}s: ${note.note}');
+    }
+    
+    print('=== END TIMING COMPARISON DEBUG ===');
   }
 
   /// Extract melody notes from the recorded file for sheet music generation

@@ -27,15 +27,15 @@ class _MinimalAnalyzingAnimationState extends State<MinimalAnalyzingAnimation>
   void _initializeAnimations() {
     if (_isDisposed) return;
     
-    // Balanced wave animation - slower to reduce CPU load
+    // Optimized wave animation for smooth 60fps performance
     _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 3000), // Más lento para mejor performance
+      duration: const Duration(milliseconds: 2000), // Optimized timing
       vsync: this,
     );
     
-    // Text dots animation - counts 1, 2, 3, 1, 2, 3...
+    // Text dots animation - optimized timing
     _dotsController = AnimationController(
-      duration: const Duration(milliseconds: 1800), // Más lento para mejor performance
+      duration: const Duration(milliseconds: 1200), // Faster, smoother timing
       vsync: this,
     );
     _dotsAnimation = IntTween(begin: 1, end: 3).animate(CurvedAnimation(
@@ -177,16 +177,20 @@ class WavePainter extends CustomPainter {
     final path = Path();
     final points = <Offset>[];
     
-    // Use fewer points for better performance
-    const int pointCount = 40;
+    // Optimized point count for 60fps performance
+    const int pointCount = 25;
     final stepSize = size.width / pointCount;
+    
+    // Pre-calculate animation phase
+    final animPhase = animationValue * 2 * math.pi;
     
     for (int i = 0; i <= pointCount; i++) {
       final x = i * stepSize;
+      final xNorm = x / size.width;
       
-      // Simple sine wave with animation
-      final wave1 = math.sin((x / size.width) * 4 * math.pi + animationValue * 4 * math.pi) * amplitude;
-      final wave2 = math.sin((x / size.width) * 6 * math.pi + animationValue * 3 * math.pi) * amplitude * 0.5;
+      // Optimized sine wave calculations
+      final wave1 = math.sin(xNorm * 4 * math.pi + animPhase * 2) * amplitude;
+      final wave2 = math.sin(xNorm * 6 * math.pi + animPhase * 1.5) * amplitude * 0.5;
       
       final y = centerY + wave1 + wave2;
       points.add(Offset(x, y));
@@ -213,9 +217,10 @@ class WavePainter extends CustomPainter {
     final secondPoints = <Offset>[];
     for (int i = 0; i <= pointCount; i++) {
       final x = i * stepSize;
+      final xNorm = x / size.width;
       
-      // Offset phase for second wave
-      final wave = math.cos((x / size.width) * 3 * math.pi + animationValue * 5 * math.pi) * amplitude * 0.7;
+      // Optimized second wave calculation
+      final wave = math.cos(xNorm * 3 * math.pi + animPhase * 2.5) * amplitude * 0.7;
       final y = centerY + wave;
       secondPoints.add(Offset(x, y));
     }
