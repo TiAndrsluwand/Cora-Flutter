@@ -75,18 +75,27 @@ class AudioService {
         }
       });
       
-      // Also listen to position stream for detailed progress tracking - FIXED for broken durations
+      // Position stream with enhanced tracking for broken WAV durations
       _player!.positionStream.listen((position) {
         if (_currentAudioType == AudioType.recording) {
           final duration = _player!.duration;
+          final estimatedDuration = _estimateRecordingDuration();
           
-          // Handle both valid and broken durations
-          if (duration != null && duration.inMilliseconds > 0) {
-            final progressPercent = (position.inMilliseconds / duration.inMilliseconds * 100);
+          // Use estimated duration if WAV header duration is unreliable
+          final actualDuration = estimatedDuration ?? duration;
+          
+          if (actualDuration != null && actualDuration.inMilliseconds > 0) {
+            final progressPercent = (position.inMilliseconds / actualDuration.inMilliseconds * 100);
             
             // Log every 2 seconds or at critical points
             if (position.inSeconds % 2 == 0 || progressPercent > 90) {
-              debugPrint('AudioService: Position ${position.inSeconds}s/${duration!.inSeconds}s (${progressPercent.toStringAsFixed(1)}%)');
+              debugPrint('AudioService: Position ${position.inSeconds}s/${actualDuration.inSeconds}s (${progressPercent.toStringAsFixed(1)}%) [Est: ${estimatedDuration?.inSeconds ?? 'none'}s, WAV: ${duration?.inSeconds ?? 'none'}s]');
+            }
+            
+            // CRITICAL FIX: Auto-stop when reaching estimated end to prevent cutoff
+            if (estimatedDuration != null && position >= estimatedDuration) {
+              debugPrint('AudioService: Auto-stopping at estimated end (${position.inSeconds}s >= ${estimatedDuration.inSeconds}s)');
+              _player!.stop().catchError((e) => debugPrint('Auto-stop error: $e'));
             }
           } else {
             // Duration unknown - just track position
@@ -224,36 +233,26 @@ class AudioService {
   /// Get total duration of current audio
   Duration? get duration => _player?.duration;
   
-  /// Get current playback progress (0.0 to 1.0) - FIXED for broken duration headers
+  /// Get current playback progress (0.0 to 1.0) - ENHANCED with duration estimation
   double get progress {
     final pos = position;
     final dur = duration;
+    final estimatedDuration = _estimateRecordingDuration();
     
-    // CRITICAL FIX: Handle metronome-corrupted recordings with zero/broken duration
-    if (dur == null || dur.inMilliseconds <= 0) {
-      if (pos == null || pos.inMilliseconds == 0) return 0.0;
-      
-      // For metronome recordings, estimate based on file size and sample rate
-      // WAV file size calculation: (sampleRate * channels * bitsPerSample * duration) / 8
-      // Standard recording: 44100Hz, 2ch, 16bit = ~176,400 bytes per second
-      final estimatedDuration = _estimateRecordingDuration();
-      
-      if (estimatedDuration != null && estimatedDuration.inMilliseconds > 0) {
-        final progress = (pos.inMilliseconds / estimatedDuration.inMilliseconds).clamp(0.0, 1.0);
-        debugPrint('AudioService: Using file-size estimated progress ${(progress * 100).toStringAsFixed(1)}% (${pos.inSeconds}s/${estimatedDuration.inSeconds}s)');
-        return progress;
-      }
-      
-      // Fallback: assume typical recording length
-      const fallbackDuration = Duration(seconds: 20);
-      final progress = (pos.inMilliseconds / fallbackDuration.inMilliseconds).clamp(0.0, 1.0);
-      debugPrint('AudioService: Using fallback progress ${(progress * 100).toStringAsFixed(1)}% (${pos.inSeconds}s/~${fallbackDuration.inSeconds}s)');
+    // Use estimated duration for better accuracy, fall back to WAV header duration
+    final actualDuration = estimatedDuration ?? dur;
+    
+    if (pos == null || pos.inMilliseconds == 0) return 0.0;
+    
+    if (actualDuration != null && actualDuration.inMilliseconds > 0) {
+      final progress = (pos.inMilliseconds / actualDuration.inMilliseconds).clamp(0.0, 1.0);
       return progress;
     }
     
-    // Safe access with null safety for normal recordings
-    if (pos == null) return 0.0;
-    return (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
+    // Ultimate fallback: assume typical recording length
+    const fallbackDuration = Duration(seconds: 20);
+    final progress = (pos.inMilliseconds / fallbackDuration.inMilliseconds).clamp(0.0, 1.0);
+    return progress;
   }
   
   // Store last file size for duration estimation
@@ -265,8 +264,8 @@ class AudioService {
     
     // WAV file size calculation:
     // Size = (sampleRate * channels * bitsPerSample * duration) / 8 + header
-    const sampleRate = 44100; // Standard CD quality
-    const channels = 2;       // Stereo (from logs: "2ch")
+    const sampleRate = 22050; // ACTUAL sample rate from WAV decoder logs (not 44100!)
+    const channels = 1;       // MONO recording (as configured in recorder_page_minimal.dart)
     const bitsPerSample = 16; // Standard for WAV
     const headerSize = 44;    // Standard WAV header
     
@@ -421,7 +420,7 @@ class AudioService {
       // Deactivate first
       await _session!.setActive(false);
       
-      // CRITICAL FIX: Configure EXCLUSIVE playback to prevent metronome interference
+      // OPTIMIZED: Configure clean playback with controlled audio focus
       await _session!.configure(AudioSessionConfiguration(
         avAudioSessionCategory: AVAudioSessionCategory.playback,
         avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker,
@@ -430,15 +429,15 @@ class AudioService {
           contentType: AndroidAudioContentType.music,
           usage: AndroidAudioUsage.media,
         ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gain, // EXCLUSIVE focus
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck, // Less aggressive focus
         androidWillPauseWhenDucked: false,
       ));
       
       // Activate the session
       await _session!.setActive(true);
       
-      // Extended delay for exclusive session to fully take control
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Allow session to stabilize
+      await Future.delayed(const Duration(milliseconds: 150));
       
       debugPrint('AudioService: ✅ EXCLUSIVE playback session configured (isolates from metronome)');
     } catch (e) {
