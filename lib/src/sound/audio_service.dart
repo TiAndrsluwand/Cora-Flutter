@@ -29,6 +29,7 @@ class AudioService {
   // Callbacks for different audio types
   Function(bool isPlaying)? _recordingPlaybackCallback;
   Function(bool isPlaying)? _chordPlaybackCallback;
+  Function(bool isPlaying)? _melodyPlaybackCallback;
 
   /// Initialize the audio service
   Future<void> initialize() async {
@@ -208,6 +209,77 @@ class AudioService {
     }
   }
 
+  /// Play melody audio
+  Future<void> playMelody(String filePath) async {
+    await _stopCurrentAndPrepare(AudioType.melody);
+    
+    try {
+      // Verify file exists
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw Exception('Melody file not found: $filePath');
+      }
+      
+      debugPrint('AudioService: Loading melody file: $filePath');
+      
+      // CRITICAL FIX: Reset player state before loading new audio
+      await _player!.stop();
+      await _player!.seek(Duration.zero);
+      
+      // Set audio source
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _player!.setFilePath(filePath);
+      } else {
+        await _player!.setUrl(Uri.file(filePath).toString());
+      }
+      
+      // Configure playback settings for melody
+      await _player!.setVolume(0.7); // Slightly softer than chord for pleasant melody playback
+      await _player!.setSpeed(1.0);
+      
+      debugPrint('AudioService: Melody configured - Volume: 0.7, Speed: 1.0');
+      
+      // Wait for the audio to load properly
+      int retries = 0;
+      const maxRetries = 10;
+      while (_player!.processingState == ProcessingState.loading && retries < maxRetries) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        retries++;
+        debugPrint('AudioService: Waiting for melody to load... (retry $retries/$maxRetries)');
+      }
+      
+      if (_player!.processingState == ProcessingState.loading) {
+        throw Exception('Melody loading timeout after ${maxRetries * 100}ms');
+      }
+      
+      // Ensure we start from the beginning
+      await _player!.seek(Duration.zero);
+      debugPrint('AudioService: Melody seeked to beginning');
+      
+      // Start playback
+      debugPrint('AudioService: Starting melody playback now...');
+      await _player!.play();
+      
+      // Wait for playback to actually start
+      retries = 0;
+      while (!_player!.playing && retries < 10) {
+        await Future.delayed(const Duration(milliseconds: 50));
+        retries++;
+      }
+      
+      if (!_player!.playing) {
+        throw Exception('Failed to start melody playback');
+      }
+      
+      debugPrint('AudioService: ✅ Melody playback started successfully - Position: ${_player!.position?.inSeconds ?? 0}s');
+      
+    } catch (e) {
+      debugPrint('AudioService: ❌ Melody playback failed: $e');
+      _currentAudioType = null;
+      rethrow;
+    }
+  }
+
   /// Stop all audio playback
   Future<void> stopAll() async {
     if (_player == null) return;
@@ -312,6 +384,11 @@ class AudioService {
   /// Set callback for chord playback state changes
   void setChordPlaybackCallback(Function(bool isPlaying)? callback) {
     _chordPlaybackCallback = callback;
+  }
+
+  /// Set callback for melody playback state changes
+  void setMelodyPlaybackCallback(Function(bool isPlaying)? callback) {
+    _melodyPlaybackCallback = callback;
   }
 
   /// Prepare for recording (stop main audio but preserve metronome independence)
@@ -474,6 +551,19 @@ class AudioService {
             }
           }
           break;
+        case AudioType.melody:
+          if (_melodyPlaybackCallback != null) {
+            debugPrint('AudioService: Calling melody callback with isPlaying: $isPlaying');
+            try {
+              _melodyPlaybackCallback!.call(isPlaying);
+              debugPrint('AudioService: ✅ Melody callback executed successfully');
+            } catch (e) {
+              debugPrint('AudioService: ❌ Melody callback error: $e');
+            }
+          } else {
+            debugPrint('AudioService: WARNING - Melody callback is null!');
+          }
+          break;
         case null:
           debugPrint('AudioService: No audio type set, skipping callback');
           break;
@@ -499,4 +589,5 @@ class AudioService {
 enum AudioType {
   recording,
   chord,
+  melody,
 }

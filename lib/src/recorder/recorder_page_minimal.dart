@@ -10,6 +10,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../sound/chord_player.dart';
+import '../sound/melody_player.dart';
 import '../analysis/analysis_service.dart';
 import '../audio/wav_decoder.dart';
 import '../analysis/chord_progression_suggestion.dart';
@@ -60,7 +61,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   
   // Metronome state
   bool _useMetronome = false;
-  bool _continueMetronomeDuringRecording = false;
+  bool _continueMetronomeDuringRecording = true;
   RecordingPhase _recordingPhase = RecordingPhase.idle;
   int _currentBeat = 0;
   int _totalBeats = 4;
@@ -77,6 +78,10 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   bool _isPlayingRecording = false;
   double _playbackProgress = 0.0;
   Timer? _progressTimer;
+  
+  // Melody playback state
+  bool _isPlayingMelody = false;
+  double _melodyProgress = 0.0;
 
   @override
   void initState() {
@@ -90,7 +95,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   
   void _initAnimations() {
     _analyzeButtonController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 600), // Faster, smoother animation
       vsync: this,
     );
     _analyzeButtonAnimation = Tween<double>(
@@ -131,6 +136,23 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         DebugLogger.debug('UI: WARNING - Widget not mounted, ignoring callback');
       }
     });
+    
+    // Set callback for melody playback state changes
+    AudioService.instance.setMelodyPlaybackCallback((isPlaying) {
+      DebugLogger.debug('UI: Received melody playback state callback - isPlaying: $isPlaying');
+      if (mounted) {
+        setState(() {
+          DebugLogger.debug('UI: Updating melody state - _isPlayingMelody: $_isPlayingMelody -> $isPlaying');
+          _isPlayingMelody = isPlaying;
+          if (!isPlaying) {
+            _melodyProgress = 0.0;
+            DebugLogger.debug('UI: Melody playback stopped - reset progress');
+          }
+        });
+      } else {
+        DebugLogger.debug('UI: WARNING - Widget not mounted, ignoring melody callback');
+      }
+    });
   }
   
   Future<void> _initMetronome() async {
@@ -140,29 +162,23 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       if (!mounted) return;
       
       if (_currentBeat != beat || _totalBeats != totalBeats || _recordingPhase != phase) {
-        scheduleMicrotask(() {
-          if (!mounted) return;
-          setState(() {
-            _currentBeat = beat;
-            _totalBeats = totalBeats;
-            _recordingPhase = phase;
-          });
+        setState(() {
+          _currentBeat = beat;
+          _totalBeats = totalBeats;
+          _recordingPhase = phase;
         });
       }
     });
     
     MetronomePlayer.setCountInCompleteCallback(() {
       if (!mounted) return;
-      scheduleMicrotask(() {
-        if (mounted && _waitingForCountIn) {
-          _startActualRecording();
-        }
-      });
+      if (mounted && _waitingForCountIn) {
+        _startActualRecording();
+      }
     });
     
     setState(() {
       _useMetronome = MetronomePlayer.enabled;
-      _continueMetronomeDuringRecording = MetronomePlayer.continueMetronomeDuringRecording;
       _totalBeats = MetronomePlayer.timeSignature.numerator;
     });
   }
@@ -178,7 +194,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       }
 
       final tempDir = await getTemporaryDirectory();
-      _path = '${tempDir.path}/temp.wav'; // Keep WAV for compatibility with analysis
+      _path = '${tempDir.path}/temp.wav'; // WAV con configuración optimizada
 
       _seconds = 0;
       
@@ -187,6 +203,9 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
           _waitingForCountIn = true;
           _recordingPhase = RecordingPhase.countIn;
         });
+        
+        // CRITICAL: Ensure metronome continues during recording
+        MetronomePlayer.setContinueMetronomeDuringRecording(_continueMetronomeDuringRecording);
         
         await MetronomePlayer.startRecordingWithCountIn();
       } else {
@@ -214,7 +233,10 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         _seconds = 0;
       });
 
-      // Lower metronome volume during recording
+      // CRITICAL: Configure audio session for concurrent metronome + recording
+      await _configureRecordingAudioSession();
+      
+      // CRITICAL: Enable recording mode to reduce metronome volume
       MetronomePlayer.setRecordingMode(true);
 
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -228,39 +250,19 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         }
       });
 
-      try {
-        // Stop all audio playback before recording
-        await AudioService.instance.stopAll();
-        await ChordPlayer.stopAnyPlayback();
-        
-        // Stop metronome preview if running
-        if (_isPreviewingMetronome) {
-          await _stopContinuousMetronome();
-        }
-        
-        // Configure audio session for recording (non-intrusive)
-        await AudioService.instance.prepareForRecording();
-        
-        // Configure metronome for recording mode AFTER AudioService setup
-        MetronomePlayer.setRecordingMode(true);
-        
-        // Give audio system time to settle
-        await Future.delayed(const Duration(milliseconds: 200));
-      } catch (e) {
-        DebugLogger.debug('Warning: Error stopping audio resources: $e');
-      }
-      
-      // CRITICAL FIX: Use optimized WAV config with mono to reduce conflicts
+      // Start recording inmediatamente - WAV optimizado para coexistir con metrónomo
       await _record.start(const RecordConfig(
         encoder: AudioEncoder.wav,
-        bitRate: 128000, // Standard bitrate for good quality
-        sampleRate: 44100, // Standard CD quality sample rate
-        numChannels: 1, // CRITICAL: Mono reduces metronome interference
+        bitRate: 64000,  // Bitrate más bajo para reducir conflictos
+        sampleRate: 22050, // Sample rate más bajo para reducir carga de sistema
+        numChannels: 1,
       ), path: _path!);
       
-      DebugLogger.debug('Recording started: 44.1kHz, 128kbps, WAV format (mono - reduces conflicts)');
+      print('Recording started: $_path');
     } catch (e) {
-      await MetronomePlayer.stopMetronome();
+      // UNIFIED: Stop metronome completely on error using single method
+      await MetronomePlayer.stopRecordingMetronome();
+      MetronomePlayer.setRecordingMode(false);
       setState(() {
         _isRecording = false;
         _waitingForCountIn = false;
@@ -271,14 +273,11 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   }
   
   Future<void> _stop() async {
-    await MetronomePlayer.stopRecordingMetronome();
-    
-    // Restore normal metronome volume
-    MetronomePlayer.setRecordingMode(false);
-    
     String? filePath;
     if (_isRecording) {
       filePath = await _record.stop();
+      
+      // Grabación terminada - archivo WAV optimizado
     }
     
     _timer?.cancel();
@@ -291,6 +290,10 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       _path = filePath ?? _path;
       _seconds = 0;
     });
+    
+    // UNIFIED: Stop metronome and disable recording mode using single method
+    await MetronomePlayer.stopRecordingMetronome();
+    MetronomePlayer.setRecordingMode(false);
     
     await AudioService.instance.restorePlaybackConfiguration();
     
@@ -331,6 +334,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
+      DebugLogger.debug('Audio session initialized');
     } catch (e) {
       DebugLogger.debug('Audio session init error: $e');
     }
@@ -455,21 +459,17 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
 
   Future<void> _prepareAndPlayAudio() async {
     try {
-      // Step 1: CRITICAL - Completely stop ALL metronome activity to prevent interference
+      // Stop metronome temporarily for playback
       if (_isPreviewingMetronome) {
         await _stopContinuousMetronome();
       }
-      // Also stop any metronome that might still be running
-      await MetronomePlayer.stopMetronome();
       await MetronomePlayer.stopContinuous();
       
-      // Step 2: COMPREHENSIVE FILE DIAGNOSTICS
+      // File diagnostics
       await _diagnoseRecordingFile(_path!);
       
-      // Step 3: Wait for metronome to fully stop before playing
+      // Wait briefly then play
       await Future.delayed(const Duration(milliseconds: 200));
-      
-      // Step 4: Play recording via centralized service with exclusive audio focus
       await AudioService.instance.playRecording(_path!);
       
       DebugLogger.debug('Recording playback started via AudioService (metronome fully stopped)');
@@ -530,6 +530,54 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     final bytesPerSecond = (sampleRate * channels * bitsPerSample) / 8;
     
     return dataSize / bytesPerSecond;
+  }
+
+  /// Play the extracted melody using synthesized audio
+  Future<void> _playExtractedMelody() async {
+    if (_extractedMelody.isEmpty) {
+      _showErrorSnackBar('No melody to play. Please analyze a recording first.');
+      return;
+    }
+
+    try {
+      DebugLogger.debug('Playing extracted melody with ${_extractedMelody.length} notes');
+      
+      if (_isPlayingMelody) {
+        // Stop current melody playback
+        await AudioService.instance.stopAll();
+        DebugLogger.debug('Stopped melody playback');
+      } else {
+        // Start melody playback
+        await _prepareAndPlayMelody();
+      }
+    } catch (e) {
+      DebugLogger.debug('Melody playback error: $e');
+      _showErrorSnackBar('Melody playback failed: $e');
+    }
+  }
+
+  /// Prepare and play the extracted melody
+  Future<void> _prepareAndPlayMelody() async {
+    try {
+      // Stop metronome temporarily for melody playback
+      if (_isPreviewingMetronome) {
+        await _stopContinuousMetronome();
+      }
+      await MetronomePlayer.stopContinuous();
+      
+      // Initialize MelodyPlayer if needed
+      await MelodyPlayer.ensureLoaded(context);
+      
+      DebugLogger.debug('Playing melody with notes: ${_extractedMelody.map((n) => '${n.note}(${n.startMs}ms,${n.durationMs}ms)').join(', ')}');
+      
+      // Play the melody through MelodyPlayer which will use AudioService
+      await MelodyPlayer.playMelody(_extractedMelody);
+      
+      DebugLogger.debug('Melody playback started via AudioService (metronome stopped)');
+    } catch (e) {
+      DebugLogger.debug('Error preparing melody: $e');
+      rethrow;
+    }
   }
 
   /// Extract melody notes from the recorded file for sheet music generation
@@ -611,6 +659,31 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     } catch (e) {
       DebugLogger.debug('Error clearing recording: $e');
       _showErrorSnackBar('Failed to prepare for new recording');
+    }
+  }
+
+  /// Configure audio session to allow concurrent metronome + recording
+  Future<void> _configureRecordingAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      
+      // Configure for speech/recording mode allowing concurrent audio
+      await session.configure(AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.duckOthers,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        androidAudioAttributes: const AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.music,
+          flags: AndroidAudioFlags.none,
+          usage: AndroidAudioUsage.media,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck,
+        androidWillPauseWhenDucked: false,
+      ));
+      
+      DebugLogger.debug('Audio session configured for concurrent recording + metronome');
+    } catch (e) {
+      DebugLogger.debug('Warning: Could not configure recording audio session: $e');
     }
   }
 
@@ -833,43 +906,109 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
                 'Key: $_detectedKey',
                 style: MinimalDesign.heading,
               ),
-              // Sheet Music Button - Only show if melody was extracted
+              // Action buttons - Only show if melody was extracted
               if (_extractedMelody.isNotEmpty)
-                ElevatedButton(
-                  onPressed: _generateSheetMusic,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MinimalDesign.white,
-                    foregroundColor: MinimalDesign.black,
-                    side: BorderSide(
-                      color: MinimalDesign.black,
-                      width: 1,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: MinimalDesign.space3,
-                      vertical: MinimalDesign.space2,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.music_note,
-                        size: 18,
-                        color: MinimalDesign.black,
-                      ),
-                      const SizedBox(width: MinimalDesign.space1),
-                      const Text(
-                        'Create Sheet Music',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // Play Melody Button
+                    ElevatedButton(
+                      onPressed: _playExtractedMelody,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isPlayingMelody ? MinimalDesign.black : MinimalDesign.white,
+                        foregroundColor: _isPlayingMelody ? MinimalDesign.white : MinimalDesign.black,
+                        side: BorderSide(
+                          color: MinimalDesign.black,
+                          width: 1,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: MinimalDesign.space3,
+                          vertical: MinimalDesign.space2,
                         ),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _isPlayingMelody ? Icons.stop : Icons.play_arrow,
+                            size: 18,
+                            color: _isPlayingMelody ? MinimalDesign.white : MinimalDesign.black,
+                          ),
+                          const SizedBox(width: MinimalDesign.space1),
+                          Text(
+                            _isPlayingMelody ? 'Stop' : 'Play Melody',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: _isPlayingMelody ? MinimalDesign.white : MinimalDesign.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: MinimalDesign.space2),
+                    // Sheet Music Button
+                    ElevatedButton(
+                      onPressed: _generateSheetMusic,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MinimalDesign.white,
+                        foregroundColor: MinimalDesign.black,
+                        side: BorderSide(
+                          color: MinimalDesign.black,
+                          width: 1,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: MinimalDesign.space3,
+                          vertical: MinimalDesign.space2,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.music_note,
+                            size: 18,
+                            color: MinimalDesign.black,
+                          ),
+                          const SizedBox(width: MinimalDesign.space1),
+                          const Text(
+                            'Create Sheet Music',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
             ],
           ),
+          // Progress indicator for melody playback
+          if (_isPlayingMelody && _extractedMelody.isNotEmpty) ...[
+            MinimalDesign.verticalSpace(MinimalDesign.space2),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: MinimalDesign.space3),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Playing melody...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: MinimalDesign.black.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: MinimalDesign.space1),
+                  LinearProgressIndicator(
+                    backgroundColor: MinimalDesign.black.withOpacity(0.1),
+                    valueColor: AlwaysStoppedAnimation<Color>(MinimalDesign.black),
+                  ),
+                ],
+              ),
+            ),
+          ],
           MinimalDesign.verticalSpace(MinimalDesign.space2),
         ],
       ),
