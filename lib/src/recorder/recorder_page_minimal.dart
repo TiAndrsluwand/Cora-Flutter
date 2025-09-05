@@ -547,6 +547,13 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         await AudioService.instance.stopAll();
         DebugLogger.debug('Stopped melody playback');
       } else {
+        // EXPERIMENTAL: Check if we should run timing validation test
+        // TODO: Remove this after debugging
+        if (_extractedMelody.length <= 3) {
+          print('Small melody detected - running timing validation test instead');
+          _createTimingValidationTest();
+        }
+        
         // Start melody playback
         await _prepareAndPlayMelody();
       }
@@ -570,6 +577,15 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       
       // CRITICAL TIMING COMPARISON DEBUG
       _debugCompareTiming();
+      
+      // DIRECT PLAYBACK TEST - Bypass sheet music completely
+      print('=== DIRECT MELODY PLAYBACK (NO SHEET MUSIC) ===');
+      print('Playing DIRECT extracted melody notes:');
+      for (int i = 0; i < _extractedMelody.length; i++) {
+        final note = _extractedMelody[i];
+        print('Direct Note $i: ${note.note} at ${note.startMs}ms for ${note.durationMs}ms');
+      }
+      print('=== END DIRECT MELODY DEBUG ===');
       
       DebugLogger.debug('Playing melody with notes: ${_extractedMelody.map((n) => '${n.note}(${n.startMs}ms,${n.durationMs}ms)').join(', ')}');
       
@@ -638,6 +654,38 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     
     print('=== END TIMING COMPARISON DEBUG ===');
   }
+  
+  /// Create a simple validation test melody for exact timing verification
+  void _createTimingValidationTest() {
+    print('=== CREATING TIMING VALIDATION TEST ===');
+    
+    // Create a simple test melody with known timing
+    final testMelody = [
+      DiscreteNote(note: 'C', startMs: 0, durationMs: 1000),     // 0-1 seconds
+      DiscreteNote(note: 'D', startMs: 1500, durationMs: 1000), // 1.5-2.5 seconds (with 500ms gap)  
+      DiscreteNote(note: 'E', startMs: 3000, durationMs: 1000), // 3-4 seconds (with 500ms gap)
+    ];
+    
+    print('Test melody timing:');
+    for (int i = 0; i < testMelody.length; i++) {
+      final note = testMelody[i];
+      print('Test Note $i: ${note.note} at ${(note.startMs/1000).toStringAsFixed(1)}s for ${(note.durationMs/1000).toStringAsFixed(1)}s');
+      
+      if (i > 0) {
+        final prevNote = testMelody[i - 1];
+        final gapMs = note.startMs - (prevNote.startMs + prevNote.durationMs);
+        print('  → Gap from previous: ${gapMs}ms');
+      }
+    }
+    
+    // Temporarily replace extracted melody with test melody
+    print('REPLACING extracted melody with test melody for validation...');
+    _extractedMelody = testMelody;
+    
+    print('Expected playback: C at 0s, silence 1-1.5s, D at 1.5s, silence 2.5-3s, E at 3s');
+    print('Listen carefully and verify timing matches exactly!');
+    print('=== END TIMING VALIDATION TEST ===');
+  }
 
   /// Extract melody notes from the recorded file for sheet music generation
   Future<void> _extractMelodyFromRecordingIsolate() async {
@@ -646,15 +694,75 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     try {
       DebugLogger.debug('Extracting melody from recording for sheet music (background)');
       
-      // Run melody extraction in background isolate to prevent blocking animations
-      final notes = await compute(_extractMelodyIsolate, _path!);
+      // TEMPORARY: Use main thread for debugging (isolate hides print logs)
+      // TODO: Revert to isolate after debugging
+      final notes = await _extractMelodyMainThread(_path!);
       
       _extractedMelody = notes;
       DebugLogger.debug('Extracted ${notes.length} melody notes for sheet music');
       
+      // DEBUG: Show extracted melody details immediately
+      print('=== EXTRACTED MELODY DETAILS ===');
+      for (int i = 0; i < notes.length && i < 10; i++) { // Show first 10 notes max
+        final note = notes[i];
+        print('Extracted Note $i: ${note.note} at ${note.startMs}ms for ${note.durationMs}ms');
+      }
+      if (notes.length > 10) {
+        print('... and ${notes.length - 10} more notes');
+      }
+      print('=== END EXTRACTED MELODY DETAILS ===');
+      
     } catch (e) {
       DebugLogger.debug('Error extracting melody: $e');
       _extractedMelody = const [];
+    }
+  }
+  
+  /// Extract melody in main thread for debugging (shows all print logs)
+  Future<List<DiscreteNote>> _extractMelodyMainThread(String filePath) async {
+    try {
+      print('=== STARTING MELODY EXTRACTION (MAIN THREAD) ===');
+      print('File path: $filePath');
+      
+      // Use the same pipeline as analysis to extract melody
+      final bytes = await File(filePath).readAsBytes();
+      print('File loaded: ${bytes.length} bytes');
+      
+      final wav = WavDecoder.decode(bytes);
+      if (wav == null || wav.samples.isEmpty) {
+        print('WAV decoding failed or no samples');
+        return const [];
+      }
+      print('WAV decoded: ${wav.samples.length} samples at ${wav.sampleRate}Hz');
+      
+      // Extract pitches and convert to notes (same as analysis)
+      const detector = PitchDetector();
+      print('Starting pitch detection...');
+      final pitches = detector.analyze(wav.samples, wav.sampleRate.toDouble());
+      
+      print('Pitch detection complete: ${pitches.length} pitch points');
+      if (pitches.isEmpty) {
+        print('No pitches detected!');
+        return const [];
+      }
+      
+      // Show first few pitch points for debugging
+      print('First 5 pitch points:');
+      for (int i = 0; i < pitches.length && i < 5; i++) {
+        final p = pitches[i];
+        print('  PitchPoint $i: ${p.note} at ${p.timeSec.toStringAsFixed(2)}s (${p.frequencyHz.toStringAsFixed(1)}Hz)');
+      }
+      
+      print('Starting note consolidation...');
+      final notes = PitchToNotes.consolidate(pitches);
+      print('Note consolidation complete: ${notes.length} discrete notes');
+      print('=== END MELODY EXTRACTION (MAIN THREAD) ===');
+      
+      return notes;
+      
+    } catch (e) {
+      print('Melody extraction error: $e');
+      return const [];
     }
   }
 
