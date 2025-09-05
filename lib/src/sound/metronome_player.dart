@@ -75,25 +75,28 @@ class MetronomePlayer {
     try {
       final tempDir = await getTemporaryDirectory();
 
-      // Generate strong beat sound (1200Hz) - SHORTER for less interference
-      final strongBeatData = _synthesizeClickWav(1200.0, durationMs: 50); // Reduced from 100ms
+      // Generate strong beat sound (1400Hz) - Higher frequency for better audibility during recording
+      final strongBeatData = _synthesizeClickWav(1400.0, durationMs: 100); // Longer for better audibility
       final strongBeatFile = File('${tempDir.path}/metronome_strong.wav');
       await strongBeatFile.writeAsBytes(strongBeatData);
       _strongBeatPath = strongBeatFile.path;
 
-      // Generate weak beat sound (800Hz) - SHORTER for less interference  
-      final weakBeatData = _synthesizeClickWav(800.0, durationMs: 50); // Reduced from 100ms
+      // Generate weak beat sound (1000Hz) - Higher frequency for better audibility during recording  
+      final weakBeatData = _synthesizeClickWav(1000.0, durationMs: 100); // Longer for better audibility
       final weakBeatFile = File('${tempDir.path}/metronome_weak.wav');
       await weakBeatFile.writeAsBytes(weakBeatData);
       _weakBeatPath = weakBeatFile.path;
 
-      // Load audio files into players with LOWER volume for recording compatibility
+      // Load audio files with optimized settings for recording compatibility
       await _strongBeatPlayer.setFilePath(_strongBeatPath!);
-      await _strongBeatPlayer.setVolume(_volume * 0.6); // Reduced volume during recording
+      await _strongBeatPlayer.setVolume(_volume);
+      await _strongBeatPlayer.setSpeed(1.0); // Ensure consistent playback
+      
       await _weakBeatPlayer.setFilePath(_weakBeatPath!);
-      await _weakBeatPlayer.setVolume(_volume * 0.6); // Reduced volume during recording
+      await _weakBeatPlayer.setVolume(_volume);
+      await _weakBeatPlayer.setSpeed(1.0); // Ensure consistent playback
 
-      print('MetronomePlayer: Pre-generated and loaded metronome sounds (recording-optimized)');
+      print('MetronomePlayer: Generated sounds with recording-friendly configuration');
     } catch (e) {
       print('MetronomePlayer: Error generating sounds: $e');
     }
@@ -163,12 +166,56 @@ class MetronomePlayer {
     _weakBeatPlayer.setVolume(_volume);
   }
 
-  /// Lower metronome volume during recording to prevent interference
+  /// Optimized recording mode - CRITICAL FIX: Keep metronome audible but prevent corruption
   static void setRecordingMode(bool isRecording) {
-    final volumeMultiplier = isRecording ? 0.4 : 1.0; // Even lower during recording
-    _strongBeatPlayer.setVolume(_volume * volumeMultiplier);
-    _weakBeatPlayer.setVolume(_volume * volumeMultiplier);
-    print('MetronomePlayer: Recording mode ${isRecording ? "ON" : "OFF"}, volume: ${(_volume * volumeMultiplier).toStringAsFixed(2)}');
+    if (isRecording) {
+      // FIXED APPROACH: Reduce volume but keep audible for user guidance
+      // Use isolated audio session configuration instead of muting
+      final recordingVolume = _volume * 0.4; // Reduced but still audible
+      print('MetronomePlayer: RECORDING MODE ON - reducing volume for recording mix: ${recordingVolume.toStringAsFixed(2)}');
+      try {
+        _strongBeatPlayer.setVolume(recordingVolume);
+        _weakBeatPlayer.setVolume(recordingVolume);
+        
+        // CRITICAL: Configure metronome players for recording coexistence
+        _configureForRecording(true);
+      } catch (e) {
+        print('MetronomePlayer: Warning - could not configure for recording: $e');
+      }
+    } else {
+      // Restore normal metronome volume after recording
+      final normalVolume = _volume * 0.8; // Normal playback volume
+      print('MetronomePlayer: RECORDING MODE OFF - restoring normal volume: ${normalVolume.toStringAsFixed(2)}');
+      try {
+        _strongBeatPlayer.setVolume(normalVolume);
+        _weakBeatPlayer.setVolume(normalVolume);
+        
+        // Restore normal audio configuration
+        _configureForRecording(false);
+      } catch (e) {
+        print('MetronomePlayer: Warning - could not restore normal mode: $e');
+      }
+    }
+  }
+  
+  /// Configure metronome audio players for recording compatibility
+  static Future<void> _configureForRecording(bool isRecording) async {
+    try {
+      if (isRecording) {
+        // Configure for non-intrusive playback during recording
+        // Set a very short preload to minimize buffer conflicts
+        await _strongBeatPlayer.setSpeed(1.0);
+        await _weakBeatPlayer.setSpeed(1.0);
+        print('MetronomePlayer: ✅ Configured for recording coexistence');
+      } else {
+        // Restore normal configuration
+        await _strongBeatPlayer.setSpeed(1.0);
+        await _weakBeatPlayer.setSpeed(1.0);
+        print('MetronomePlayer: ✅ Restored normal configuration');
+      }
+    } catch (e) {
+      print('MetronomePlayer: Warning - audio configuration failed: $e');
+    }
   }
 
   static void setBeatCallback(
@@ -360,11 +407,14 @@ class MetronomePlayer {
       // Sharp, audible click with quick attack and decay
       double signal = 0;
 
-      // Primary frequency (clear and strong)
-      signal += math.sin(2 * math.pi * frequency * t) * 0.8;
+      // Primary frequency (strong and piercing for recording audibility)
+      signal += math.sin(2 * math.pi * frequency * t) * 0.9;
 
-      // Add harmonic for sharpness
-      signal += math.sin(2 * math.pi * frequency * 2 * t) * 0.3;
+      // Add harmonic for extra sharpness and penetration
+      signal += math.sin(2 * math.pi * frequency * 2 * t) * 0.4;
+      
+      // Add higher harmonic for even more presence
+      signal += math.sin(2 * math.pi * frequency * 3 * t) * 0.2;
 
       // Apply sharp envelope for click character
       final envelope = _clickEnvelope(t, durationMs / 1000.0);

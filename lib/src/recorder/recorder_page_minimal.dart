@@ -53,6 +53,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
 
   // Recording diagnostics
   double? _lastRmsDb;
+  Duration? _recordingDuration;
   
   // Piano keyboard state
   DetectedChord? _selectedChord;
@@ -74,6 +75,8 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   
   // Audio playback state
   bool _isPlayingRecording = false;
+  double _playbackProgress = 0.0;
+  Timer? _progressTimer;
 
   @override
   void initState() {
@@ -109,10 +112,23 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     
     // Set callback for recording playback state changes
     AudioService.instance.setRecordingPlaybackCallback((isPlaying) {
+      DebugLogger.debug('UI: Received playback state callback - isPlaying: $isPlaying');
       if (mounted) {
         setState(() {
+          DebugLogger.debug('UI: Updating UI state - _isPlayingRecording: $_isPlayingRecording -> $isPlaying');
           _isPlayingRecording = isPlaying;
+          if (!isPlaying) {
+            _playbackProgress = 0.0;
+            _progressTimer?.cancel();
+            _progressTimer = null;
+            DebugLogger.debug('UI: Playback stopped - reset progress and timer');
+          } else {
+            _startProgressTracking();
+            DebugLogger.debug('UI: Playback started - starting progress tracking');
+          }
         });
+      } else {
+        DebugLogger.debug('UI: WARNING - Widget not mounted, ignoring callback');
       }
     });
   }
@@ -222,21 +238,27 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
           await _stopContinuousMetronome();
         }
         
-        // Configure audio session for recording
+        // Configure audio session for recording (non-intrusive)
         await AudioService.instance.prepareForRecording();
         
+        // Configure metronome for recording mode AFTER AudioService setup
+        MetronomePlayer.setRecordingMode(true);
+        
         // Give audio system time to settle
-        await Future.delayed(const Duration(milliseconds: 150));
+        await Future.delayed(const Duration(milliseconds: 200));
       } catch (e) {
         DebugLogger.debug('Warning: Error stopping audio resources: $e');
       }
       
-      // Use WAV with reduced quality for smaller file size (~800KB vs ~1.7MB)
+      // CRITICAL FIX: Use optimized WAV config with mono to reduce conflicts
       await _record.start(const RecordConfig(
         encoder: AudioEncoder.wav,
-        bitRate: 64000, // Lower bitrate to reduce size
-        sampleRate: 22050, // Half sample rate for smaller file
+        bitRate: 128000, // Standard bitrate for good quality
+        sampleRate: 44100, // Standard CD quality sample rate
+        numChannels: 1, // CRITICAL: Mono reduces metronome interference
       ), path: _path!);
+      
+      DebugLogger.debug('Recording started: 44.1kHz, 128kbps, WAV format (mono - reduces conflicts)');
     } catch (e) {
       await MetronomePlayer.stopMetronome();
       setState(() {
@@ -297,6 +319,9 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
       _selectedChord = null;
       _isAnalyzing = false;
       _analysisCompleted = false;
+      _playbackProgress = 0.0;
+      _progressTimer?.cancel();
+      _progressTimer = null;
       _extractedMelody = const [];
       _sheetMusicData = null;
     });
@@ -430,19 +455,81 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
 
   Future<void> _prepareAndPlayAudio() async {
     try {
-      // Step 1: Stop any ongoing metronome to avoid conflicts
+      // Step 1: CRITICAL - Completely stop ALL metronome activity to prevent interference
       if (_isPreviewingMetronome) {
         await _stopContinuousMetronome();
       }
+      // Also stop any metronome that might still be running
+      await MetronomePlayer.stopMetronome();
+      await MetronomePlayer.stopContinuous();
       
-      // Step 2: Play recording via centralized service
+      // Step 2: COMPREHENSIVE FILE DIAGNOSTICS
+      await _diagnoseRecordingFile(_path!);
+      
+      // Step 3: Wait for metronome to fully stop before playing
+      await Future.delayed(const Duration(milliseconds: 200));
+      
+      // Step 4: Play recording via centralized service with exclusive audio focus
       await AudioService.instance.playRecording(_path!);
       
-      DebugLogger.debug('Recording playback started via AudioService');
+      DebugLogger.debug('Recording playback started via AudioService (metronome fully stopped)');
     } catch (e) {
       DebugLogger.debug('Error preparing audio: $e');
       rethrow;
     }
+  }
+  
+  /// Comprehensive recording file diagnostics
+  Future<void> _diagnoseRecordingFile(String filePath) async {
+    try {
+      final file = File(filePath);
+      final exists = await file.exists();
+      final size = exists ? await file.length() : 0;
+      
+      DebugLogger.debug('=== RECORDING FILE DIAGNOSTICS ===');
+      DebugLogger.debug('File path: $filePath');
+      DebugLogger.debug('File exists: $exists');
+      DebugLogger.debug('File size: ${(size / 1024).toStringAsFixed(1)} KB');
+      
+      if (exists && size > 0) {
+        // Read first few bytes to check WAV header
+        final bytes = await file.readAsBytes();
+        final header = String.fromCharCodes(bytes.take(12));
+        DebugLogger.debug('WAV header: ${header.substring(0, 4)} (should be RIFF)');
+        DebugLogger.debug('Format: ${header.substring(8, 12)} (should be WAVE)');
+        
+        // Check if it's a valid WAV file
+        if (header.startsWith('RIFF') && header.contains('WAVE')) {
+          DebugLogger.debug('✅ Valid WAV file structure');
+        } else {
+          DebugLogger.debug('❌ INVALID WAV file structure!');
+        }
+        
+        // Estimate duration based on file size and recording config
+        final estimatedDuration = _estimateAudioDuration(size);
+        DebugLogger.debug('Estimated duration: ${estimatedDuration.toStringAsFixed(1)}s');
+      } else {
+        DebugLogger.debug('❌ FILE MISSING OR EMPTY!');
+      }
+      DebugLogger.debug('=== END DIAGNOSTICS ===');
+    } catch (e) {
+      DebugLogger.debug('File diagnostics failed: $e');
+    }
+  }
+  
+  /// Estimate audio duration from file size
+  double _estimateAudioDuration(int fileSizeBytes) {
+    // WAV file size calculation:
+    // Size = (sampleRate * channels * bitsPerSample * duration) / 8 + header
+    const sampleRate = 44100; // Updated to match new recording config
+    const channels = 1;       // Mono
+    const bitsPerSample = 16; // Standard for WAV
+    const headerSize = 44;    // Standard WAV header
+    
+    final dataSize = fileSizeBytes - headerSize;
+    final bytesPerSecond = (sampleRate * channels * bitsPerSample) / 8;
+    
+    return dataSize / bytesPerSecond;
   }
 
   /// Extract melody notes from the recorded file for sheet music generation
@@ -513,6 +600,9 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         _selectedChord = null;
         _lastRmsDb = null;
         _isPlayingRecording = false;
+        _playbackProgress = 0.0;
+        _progressTimer?.cancel();
+        _progressTimer = null;
         _extractedMelody = const [];
         _sheetMusicData = null;
       });
@@ -560,6 +650,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   @override
   void dispose() async {
     _timer?.cancel();
+    _progressTimer?.cancel();
     _analyzeButtonController.dispose();
     
     // Stop and dispose audio resources properly
@@ -573,6 +664,101 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     }
     
     super.dispose();
+  }
+
+  /// Start tracking playback progress with diagnostics
+  void _startProgressTracking() {
+    _progressTimer?.cancel();
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (mounted && _isPlayingRecording && AudioService.instance.isPlaying) {
+        final audioService = AudioService.instance;
+        final progress = audioService.progress;
+        final diagnostics = audioService.playbackDiagnostics;
+        
+        setState(() {
+          _playbackProgress = progress;
+        });
+        
+        // Enhanced logging for debugging
+        if (timer.tick % 20 == 0) { // Log every 2 seconds
+          DebugLogger.debug('Playback: ${(progress * 100).toStringAsFixed(1)}% - $diagnostics');
+        }
+        
+        // CRITICAL FIX: Stop tracking when audio service indicates not playing
+        if (!audioService.isPlaying) {
+          DebugLogger.debug('AudioService indicates playback stopped - stopping progress tracking');
+          timer.cancel();
+          if (mounted) {
+            setState(() {
+              _isPlayingRecording = false;
+              _playbackProgress = 0.0;
+            });
+          }
+          return;
+        }
+        
+        // Verify playback integrity (async check)
+        if (progress > 0.5) {
+          audioService.verifyPlaybackIntegrity().then((isValid) {
+            if (!isValid) {
+              DebugLogger.debug('Warning: Playback integrity issue detected');
+            }
+          });
+        }
+        
+        // Stop timer when playback completes
+        if (progress >= 0.99) { // Use 99% to account for rounding
+          DebugLogger.debug('Playback completed - stopping progress tracking');
+          timer.cancel();
+        }
+      } else {
+        DebugLogger.debug('Stopping progress tracking - conditions not met (mounted: $mounted, playing: $_isPlayingRecording, service: ${AudioService.instance.isPlaying})');
+        timer.cancel();
+      }
+    });
+  }
+
+  Widget _buildPlaybackProgressBar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Playing',
+              style: MinimalDesign.caption.copyWith(
+                color: MinimalDesign.accent,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${(_playbackProgress * 100).toStringAsFixed(0)}%',
+              style: MinimalDesign.caption,
+            ),
+          ],
+        ),
+        MinimalDesign.verticalSpace(MinimalDesign.space1),
+        Container(
+          height: 4,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: MinimalDesign.lightGray,
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: _playbackProgress.clamp(0.0, 1.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: MinimalDesign.accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildMinimalPlaybackControls() {
@@ -600,6 +786,12 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
               ),
             ],
           ),
+          
+          // Playback progress bar
+          if (_isPlayingRecording || _playbackProgress > 0.0) ...{
+            MinimalDesign.verticalSpace(MinimalDesign.space2),
+            _buildPlaybackProgressBar(),
+          },
           
           MinimalDesign.verticalSpace(MinimalDesign.space3),
           

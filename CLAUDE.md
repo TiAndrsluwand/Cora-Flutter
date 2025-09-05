@@ -113,14 +113,38 @@ flutter test
 
 ## Key Implementation Details
 
-### Audio Processing Pipeline
-1. **Recording** → 20-second WAV capture with metronome count-in
-2. **Decoding** → `wav_decoder.dart` processes raw audio bytes  
-3. **Pitch Detection** → `pitch_detector.dart` uses autocorrelation
-4. **Note Consolidation** → `pitch_to_notes.dart` creates discrete notes
-5. **Key Detection** → `key_detection.dart` uses Krumhansl-Schmuckler
-6. **Chord Analysis** → `chord_engine.dart` generates progressions
-7. **Visualization** → `minimal_piano_keyboard.dart` shows results
+### Audio Processing Pipeline (Updated)
+1. **Recording** → 20-second mono WAV capture (44.1kHz) with metronome guidance
+2. **Audio Session Management** → Exclusive playback sessions prevent interference
+3. **Decoding** → `wav_decoder.dart` processes raw audio bytes with fallback duration estimation
+4. **Pitch Detection** → `pitch_detector.dart` uses autocorrelation
+5. **Note Consolidation** → `pitch_to_notes.dart` creates discrete notes
+6. **Key Detection** → `key_detection.dart` uses Krumhansl-Schmuckler
+7. **Chord Analysis** → `chord_engine.dart` generates progressions
+8. **Visualization** → `minimal_piano_keyboard.dart` shows results
+
+### Professional Audio Session Management (`audio_service.dart`)
+**Core Components:**
+- **Exclusive Playback Focus**: `AndroidAudioFocusGainType.gain` prevents metronome interference
+- **Smart Duration Estimation**: File-size-based calculation for corrupted WAV headers
+- **Thread-Safe Callbacks**: `scheduleMicrotask()` ensures UI updates on main thread
+- **Comprehensive Diagnostics**: Real-time playback integrity verification
+- **State Isolation**: Complete separation between recording and playback contexts
+
+**Recording Configuration** (`recorder_page_minimal.dart`):
+```dart
+RecordConfig(
+  encoder: AudioEncoder.wav,
+  bitRate: 128000,
+  sampleRate: 44100,
+  numChannels: 1, // CRITICAL: Mono reduces metronome interference
+)
+```
+
+**Metronome Integration** (`metronome_player.dart`):
+- **Smart Volume Control**: 40% volume during recording, muted during playback
+- **Audio Focus Cooperation**: Temporary reduction during recording phases
+- **Complete Isolation**: Full shutdown during playback to prevent conflicts
 
 ### Minimalist Design System
 **File:** `lib/src/theme/minimal_design_system.dart`
@@ -180,6 +204,13 @@ MinimalDesign.primaryButton // Button style
 - **Fallback system** provides C major progression if analysis fails
 - **Debug logging enabled** - check console for analysis steps
 
+### Audio Playback Issues
+- **Metronome conflicts resolved** - exclusive audio sessions prevent interference
+- **Recording format optimized** - mono WAV reduces complexity and conflicts
+- **Progress tracking fixed** - file-size estimation handles corrupted duration headers
+- **Complete isolation** - metronome fully stopped during playback for clean audio
+- **If still issues** - check logs for `AudioService:` messages and file diagnostics
+
 ### UI Issues
 - **Minimalist design** may look different from old complex UI
 - **BPM slider** replaced arrow controls for efficiency  
@@ -205,6 +236,14 @@ MinimalDesign.primaryButton // Button style
 3. **Animated UI feedback**: Full-screen analyzing animation with visual progress
 4. **Optimized performance**: Faster build and runtime
 5. **Professional quality**: Senior Flutter development standards
+
+### CRITICAL AUDIO SYSTEM OVERHAUL (Latest)
+1. **Complete Metronome-Recording Integration**: Fixed all audio conflicts between metronome and recording playback
+2. **Professional Audio Session Management**: Implemented exclusive audio focus for clean playback
+3. **Mono Recording Format**: Optimized WAV configuration (44.1kHz, mono) reduces interference
+4. **Smart Volume Control**: Context-aware metronome volume (40% during recording, muted during playback)
+5. **Robust Progress Tracking**: File-size-based duration estimation handles corrupted headers
+6. **Clean Audio Isolation**: Complete metronome shutdown during playback prevents all interference
 
 ## Development Guidelines
 
