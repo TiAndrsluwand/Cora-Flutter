@@ -336,16 +336,23 @@ class AudioService {
     
     // WAV file size calculation:
     // Size = (sampleRate * channels * bitsPerSample * duration) / 8 + header
-    const sampleRate = 22050; // ACTUAL sample rate from WAV decoder logs (not 44100!)
+    const sampleRate = 48000; // UPDATED: Match new ultra-smooth recording config (48kHz professional studio standard)
     const channels = 1;       // MONO recording (as configured in recorder_page_minimal.dart)
     const bitsPerSample = 16; // Standard for WAV
     const headerSize = 44;    // Standard WAV header
     
     final dataSize = _lastFileSizeBytes! - headerSize;
-    if (dataSize <= 0) return null;
+    if (dataSize <= 0) {
+      debugPrint('AudioService: Invalid data size: $dataSize (file: $_lastFileSizeBytes, header: $headerSize)');
+      return null;
+    }
     
     final bytesPerSecond = (sampleRate * channels * bitsPerSample) / 8;
     final durationSeconds = dataSize / bytesPerSecond;
+    
+    debugPrint('AudioService: Duration calculation - File: $_lastFileSizeBytes bytes, Data: $dataSize bytes');
+    debugPrint('AudioService: BytesPerSecond: $bytesPerSecond (48kHz * 1ch * 16bit / 8)');
+    debugPrint('AudioService: Calculated duration: ${durationSeconds.toStringAsFixed(2)}s (${(durationSeconds * 1000).round()}ms)');
     
     return Duration(milliseconds: (durationSeconds * 1000).round());
   }

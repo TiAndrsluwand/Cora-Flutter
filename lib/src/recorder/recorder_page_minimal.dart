@@ -156,6 +156,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   }
   
   Future<void> _initMetronome() async {
+    // Initialize MetronomePlayer for ultra-low latency, smooth metronome
     await MetronomePlayer.ensureLoaded(context);
     
     MetronomePlayer.setBeatCallback((beat, totalBeats, phase) {
@@ -250,19 +251,22 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
         }
       });
 
-      // Start recording inmediatamente - WAV optimizado para coexistir con metrónomo
+      // Start recording with OPTIMIZED CONFIGURATION - High quality with stability
       await _record.start(const RecordConfig(
         encoder: AudioEncoder.wav,
-        bitRate: 64000,  // Bitrate más bajo para reducir conflictos
-        sampleRate: 22050, // Sample rate más bajo para reducir carga de sistema
-        numChannels: 1,
+        bitRate: 320000,  // OPTIMIZED: High quality without buffer overload (was 512k)
+        sampleRate: 48000, // PREMIUM: Professional studio standard (higher than CD)
+        numChannels: 1,     // Mono reduces interference with metronome
+        autoGain: false,    // Disable auto-gain to prevent level adjustments causing choppiness
+        echoCancel: false,  // Disable echo cancellation to prevent processing delays
+        noiseSuppress: false, // Disable noise suppression to prevent audio gaps
       ), path: _path!);
       
       print('Recording started: $_path');
     } catch (e) {
       // UNIFIED: Stop metronome completely on error using single method
-      await MetronomePlayer.stopRecordingMetronome();
-      MetronomePlayer.setRecordingMode(false);
+      await MetronomePlayer.stopContinuous();
+      MetronomePlayer.setRecordingMode(true);
       setState(() {
         _isRecording = false;
         _waitingForCountIn = false;
@@ -292,8 +296,8 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     });
     
     // UNIFIED: Stop metronome and disable recording mode using single method
-    await MetronomePlayer.stopRecordingMetronome();
-    MetronomePlayer.setRecordingMode(false);
+    await MetronomePlayer.stopContinuous();
+    // MetronomePlayer recording mode is handled internally
     
     await AudioService.instance.restorePlaybackConfiguration();
     
@@ -521,7 +525,7 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
   double _estimateAudioDuration(int fileSizeBytes) {
     // WAV file size calculation:
     // Size = (sampleRate * channels * bitsPerSample * duration) / 8 + header
-    const sampleRate = 44100; // Updated to match new recording config
+    const sampleRate = 48000; // UPDATED: Match new ultra-smooth recording config (48kHz)
     const channels = 1;       // Mono
     const bitsPerSample = 16; // Standard for WAV
     const headerSize = 44;    // Standard WAV header
@@ -880,21 +884,28 @@ class _RecorderPageState extends State<RecorderPage> with TickerProviderStateMix
     try {
       final session = await AudioSession.instance;
       
-      // Configure for speech/recording mode allowing concurrent audio
+      // BALANCED AUDIO SESSION: High quality recording with proper metronome coexistence
       await session.configure(AudioSessionConfiguration(
         avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.duckOthers,
-        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode, // REVERT: Default mode for compatibility
         androidAudioAttributes: const AndroidAudioAttributes(
           contentType: AndroidAudioContentType.music,
-          flags: AndroidAudioFlags.none,
+          flags: AndroidAudioFlags.none, // REVERT: Remove aggressive flags
           usage: AndroidAudioUsage.media,
         ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck,
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck, // REVERT: Allow coexistence
         androidWillPauseWhenDucked: false,
       ));
       
-      DebugLogger.debug('Audio session configured for concurrent recording + metronome');
+      // ADDITIONAL: Set preferred audio hardware settings for ultra-smooth recording
+      try {
+        await session.setActive(true);
+        // Configure for lowest possible latency and highest quality - UPDATED
+        DebugLogger.debug('Balanced audio session configured - 48kHz, 320kbps, metronome-compatible mode');
+      } catch (e) {
+        DebugLogger.debug('Warning: Could not activate audio session: $e');
+      }
     } catch (e) {
       DebugLogger.debug('Warning: Could not configure recording audio session: $e');
     }

@@ -189,7 +189,7 @@ class MelodyPlayer {
     return null;
   }
 
-  static Uint8List _synthesizeMelodyWav(List<DiscreteNote> melody, {int sampleRate = 22050}) { // FIXED: Match recording sample rate!
+  static Uint8List _synthesizeMelodyWav(List<DiscreteNote> melody, {int sampleRate = 48000}) { // UPDATED: Match new ultra-smooth recording config (48kHz)
     print('MelodyPlayer: Synthesizing melody with ${melody.length} notes');
     
     if (melody.isEmpty) {

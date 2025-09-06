@@ -75,11 +75,18 @@ class SimpleSheetMusicService {
     
     DebugLogger.debug('SimpleSheetMusicService: Shortest note: ${shortestDuration}ms');
 
+    print('=== SHEET MUSIC CONVERSION DEBUG (BPM: $bpm) ===');
+    print('msPerBeat: ${msPerBeat.toStringAsFixed(1)}ms');
+    
     for (int i = 0; i < melody.length; i++) {
       final note = melody[i];
+      print('');
+      print('Converting Note ${i + 1}:');
+      print('  DiscreteNote: ${note.note} | start: ${note.startMs}ms | duration: ${note.durationMs}ms');
+      
       final pitchData = _parsePitchName(note.note);
       final startBeat = note.startMs / msPerBeat;
-      final duration = _quantizeDuration(note.durationMs, msPerBeat);
+      final duration = _quantizeDuration(note.durationMs, msPerBeat); // This will print debug info
 
       final sheetNote = SheetMusicNote(
         pitchName: pitchData.pitchName,
@@ -88,10 +95,22 @@ class SimpleSheetMusicService {
         startBeat: startBeat,
       );
 
+      // Show expected vs actual duration mapping
+      final expectedBeats = note.durationMs / msPerBeat;
+      final actualBeats = duration == NoteDuration.whole ? 4.0 :
+                         duration == NoteDuration.half ? 2.0 :
+                         duration == NoteDuration.quarter ? 1.0 :
+                         duration == NoteDuration.eighth ? 0.5 : 0.25;
+      
+      print('  SheetMusicNote: ${pitchData.pitchName}${pitchData.octave} | start: ${startBeat.toStringAsFixed(2)} beats');
+      print('  Duration mapping: ${expectedBeats.toStringAsFixed(2)} beats → ${duration.name} (${actualBeats} beats) ${duration.symbol}');
+      
       sheetNotes.add(sheetNote);
       
       DebugLogger.debug('SimpleSheetMusicService: Note ${i + 1}: ${note.note} → $sheetNote');
     }
+    
+    print('=== END SHEET MUSIC CONVERSION DEBUG ===');
 
     final result = SheetMusicData(
       keySignature: detectedKey,
@@ -107,11 +126,37 @@ class SimpleSheetMusicService {
   static NoteDuration _quantizeDuration(int durationMs, double msPerBeat) {
     final beatDuration = durationMs / msPerBeat;
     
-    // Find closest standard note duration
-    if (beatDuration >= 0.75) return NoteDuration.whole;
-    if (beatDuration >= 0.375) return NoteDuration.half;
-    if (beatDuration >= 0.1875) return NoteDuration.quarter;
-    if (beatDuration >= 0.09375) return NoteDuration.eighth;
+    // DEBUG: Show duration calculation
+    print('_quantizeDuration: ${durationMs}ms / ${msPerBeat.toStringAsFixed(1)}ms = ${beatDuration.toStringAsFixed(3)} beats');
+    print('  Available NoteDurations: whole(4.0), half(2.0), quarter(1.0), eighth(0.5), sixteenth(0.25)');
+    
+    // FIXED: Use proper musical note duration mapping
+    // Musical note values in 4/4 time:
+    // - Whole note = 4.0 beats
+    // - Half note = 2.0 beats  
+    // - Quarter note = 1.0 beat
+    // - Eighth note = 0.5 beats
+    // - Sixteenth note = 0.25 beats
+    
+    // Use 75% thresholds for better quantization
+    if (beatDuration >= 3.0) {  // >= 3 beats → whole note (4 beats)
+      print('  → Quantized to WHOLE note (4.0 beats)');
+      return NoteDuration.whole;
+    }
+    if (beatDuration >= 1.5) {  // >= 1.5 beats → half note (2 beats)
+      print('  → Quantized to HALF note (2.0 beats)');
+      return NoteDuration.half;
+    }
+    if (beatDuration >= 0.75) { // >= 0.75 beats → quarter note (1 beat)
+      print('  → Quantized to QUARTER note (1.0 beat)');
+      return NoteDuration.quarter;
+    }
+    if (beatDuration >= 0.375) { // >= 0.375 beats → eighth note (0.5 beats)
+      print('  → Quantized to EIGHTH note (0.5 beats)');
+      return NoteDuration.eighth;
+    }
+    // < 0.375 beats → sixteenth note (0.25 beats)
+    print('  → Quantized to SIXTEENTH note (0.25 beats)');
     return NoteDuration.sixteenth;
   }
 

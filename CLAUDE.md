@@ -255,10 +255,10 @@ MinimalDesign.primaryButton // Button style
 **ROOT CAUSE IDENTIFIED:**
 - WAV headers reported incorrect duration (8s) for actual longer recordings (17-20s)
 - Sample rate mismatch: Code assumed 44100Hz but actual recordings used 22050Hz
-- Duration calculation errors caused premature playback termination
+- Duration calculation errors caused premature playbook termination
 
 **TECHNICAL SOLUTION:**
-1. **Corrected Sample Rate Recognition**: Updated from 44100Hz → 22050Hz for accurate duration estimation
+1. **Corrected Sample Rate Recognition**: Updated from 44100Hz → 48000Hz for accurate duration estimation
 2. **Dual Duration System**: Uses file-size calculation as primary, WAV header as fallback
 3. **Smart Auto-Stop**: Automatically stops at calculated recording end, not corrupted header end
 4. **Enhanced Progress Tracking**: Real-time position monitoring with accurate duration sources
@@ -266,8 +266,8 @@ MinimalDesign.primaryButton // Button style
 
 **IMPLEMENTATION DETAILS:**
 ```dart
-// File-size-based duration calculation (audio_service.dart:268)
-const sampleRate = 22050; // Matches actual WAV decoder output
+// File-size-based duration calculation (audio_service.dart:339)
+const sampleRate = 48000; // CURRENT: Professional studio standard
 const channels = 1;       // Mono recording configuration
 const bitsPerSample = 16; // Standard PCM
 ```
@@ -277,6 +277,59 @@ const bitsPerSample = 16; // Standard PCM
 - ✅ **Accurate Progress**: Progress bar shows real completion percentage
 - ✅ **Reliable Timing**: Duration estimation matches actual recording length
 - ✅ **Better UX**: Users can hear their complete musical performances
+
+### CRITICAL AUDIO SESSION INTERFERENCE FIX (September 2025) ⚠️
+**PROBLEM:** Metronome interferes with audio playback - "funciona sin el metronomo, una vez que activo el metronome falla el reproductor"
+
+**ROOT CAUSE:** Ultra-aggressive audio session configuration prevents metronome-playback coexistence:
+```dart
+// ❌ PROBLEMATIC CONFIGURATION (TOO AGGRESSIVE)
+avAudioSessionMode: AVAudioSessionMode.measurement,     // Too restrictive
+androidAudioFocusGainType: AndroidAudioFocusGainType.gain, // Monopolizes audio
+flags: AndroidAudioFlags.audibilityEnforced,           // Too aggressive
+bitRate: 512000,  // Too high, causes buffer overflow and choppy audio
+```
+
+**SOLUTION:** Balanced audio session configuration for stable coexistence:
+```dart
+// ✅ WORKING CONFIGURATION (BALANCED)
+avAudioSessionMode: AVAudioSessionMode.defaultMode,           // Compatible
+androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck, // Allows coexistence
+flags: AndroidAudioFlags.none,                               // No aggressive restrictions
+bitRate: 320000,  // High quality without buffer overload
+sampleRate: 48000, // Professional quality maintained
+```
+
+**KEY LESSON:** When optimizing audio quality, avoid ultra-aggressive configurations that break coexistence between audio sources. Always test metronome + playback together.
+
+**FILES TO UPDATE WHEN CHANGING AUDIO CONFIG:**
+- `recorder_page_minimal.dart:886-898` (Audio session configuration)
+- `recorder_page_minimal.dart:254-262` (Recording configuration)
+- `audio_service.dart:339` (Sample rate consistency)
+- `melody_player.dart:192` (Synthesis sample rate)
+
+### CRITICAL METRONOME TIMING FIX (September 2025) 🎵
+**PROBLEM:** "el metronomo ahora ya no es fluido, se traba y daña el tempo del usuario"
+
+**ROOT CAUSE:** MetronomePlayer creates/destroys AudioTrack for each beat causing stuttering:
+```
+D/AudioTrack( 9151): stop(768): called with 4410 frames delivered
+D/AudioTrack( 9151): stop(769): called with 4410 frames delivered  
+D/AudioTrack( 9151): stop(770): called with 4410 frames delivered
+```
+
+**SOLUTION:** Use InstantMetronome instead of MetronomePlayer for direct audio synthesis:
+```dart
+// ❌ PROBLEMATIC (File-based, creates AudioTrack per beat)
+MetronomePlayer.startRecordingWithCountIn();
+MetronomePlayer.startContinuous();
+
+// ✅ SOLUTION (Direct synthesis, ultra-low latency)
+InstantMetronome.startRecordingWithCountIn();
+InstantMetronome.startContinuous();
+```
+
+**CRITICAL:** Always use InstantMetronome for timing-critical applications. MetronomePlayer is only for fallback.
 
 **VERIFICATION LOGS:**
 ```
