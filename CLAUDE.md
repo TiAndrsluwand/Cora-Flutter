@@ -220,6 +220,14 @@ MinimalDesign.primaryButton // Button style
 - **BPM slider** replaced arrow controls for efficiency  
 - **Progressive disclosure** - advanced features hidden until needed
 
+### Metronome Issues
+- ✅ **SILENT METRONOME RESOLVED** - Missing `MetronomePlayer.ensureLoaded()` initialization (fixed Sep 2025)
+- ✅ **Import conflicts resolved** - Use `metronome_player.dart` consistently (not `instant_metronome.dart`)  
+- ✅ **API compatibility fixed** - All method calls match MetronomePlayer API
+- **If metronome is silent** - Check for "MetronomePlayer: Generated sounds" log during initialization
+- **If build fails with enum conflicts** - Ensure single import source for `RecordingPhase` and `TimeSignature`
+- **InstantMetronome limitations** - Experimental class lacking native implementation, use for reference only
+
 ## Recent Major Changes (December 2025)
 
 ### Codebase Cleanup
@@ -331,6 +339,58 @@ InstantMetronome.startContinuous();
 
 **CRITICAL:** Always use InstantMetronome for timing-critical applications. MetronomePlayer is only for fallback.
 
+**⚠️ UPDATE (September 2025):** This recommendation is **REVERSED** - see METRONOME INITIALIZATION FIX below. InstantMetronome lacks native implementation, MetronomePlayer is production-ready.
+
+### CRITICAL METRONOME INITIALIZATION FIX (September 2025) 🔧
+**PROBLEM SOLVED:** "no se escucha" - Metronome audio completely silent despite successful build
+
+**ROOT CAUSE ANALYSIS:**
+1. **Import Conflicts**: `RecordingPhase` enum imported from both `instant_metronome.dart` and `metronome_player.dart`
+2. **Missing Initialization**: `MetronomePlayer.ensureLoaded(context)` not called, preventing WAV audio file generation
+3. **Fallback to Haptics**: InstantMetronome uses MethodChannel without native implementation, falls back to vibration only
+4. **API Mismatch**: InstantMetronome methods don't match MetronomePlayer API (setContinueMetronomeDuringRecording, setRecordingMode, etc.)
+
+**SOLUTION IMPLEMENTED:**
+```dart
+// ✅ WORKING INITIALIZATION PATTERN (recorder_page_minimal.dart:159)
+Future<void> _initMetronome() async {
+  // CRITICAL: Initialize MetronomePlayer for ultra-low latency, smooth metronome
+  await MetronomePlayer.ensureLoaded(context);
+  
+  MetronomePlayer.setBeatCallback((beat, totalBeats, phase) {
+    setState(() {
+      _currentBeat = beat;
+      _recordingPhase = phase;
+    });
+  });
+  
+  // Set completion callback for automatic recording start
+  MetronomePlayer.setCountInCompleteCallback(() {
+    if (mounted) _startActualRecording();
+  });
+}
+```
+
+**KEY IMPLEMENTATION FIXES:**
+1. **Proper Initialization**: `MetronomePlayer.ensureLoaded(context)` generates WAV files with `_synthesizeClickWav(1400Hz, 800Hz)`
+2. **Consistent Imports**: Use `metronome_player.dart` throughout (not `instant_metronome.dart`)
+3. **Correct Method Calls**: Use `stopContinuous()` instead of `stop()` for proper state management
+4. **Audio File Generation**: ensureLoaded() creates strong (1400Hz) and weak (800Hz) click sounds
+
+**ERROR PREVENTION CHECKLIST:**
+- ✅ **Always call** `MetronomePlayer.ensureLoaded(context)` in initialization
+- ✅ **Import consistency** - use `metronome_player.dart` everywhere
+- ✅ **Method verification** - check API exists before calling
+- ✅ **Audio validation** - ensure WAV generation logs appear: "Generated sounds with recording-friendly configuration"
+- ✅ **Fallback handling** - InstantMetronome is experimental, MetronomePlayer is production-ready
+
+**DIAGNOSTIC LOGS (Success):**
+```
+I/flutter: MetronomePlayer: Generated sounds with recording-friendly configuration
+I/flutter: MetronomePlayer: Initialized successfully
+I/flutter: MetronomePlayer: Strong beat (1400Hz) and weak beat (800Hz) ready
+```
+
 **VERIFICATION LOGS:**
 ```
 AudioService: Position 8s/17s (95.3%) [Est: 17s, WAV: 8s]
@@ -350,6 +410,15 @@ AudioService: Auto-stopping at estimated end (17s >= 17s)
 - **Test thoroughly**: Ensure no regressions in core functionality
 - **Keep dependencies minimal**: Only add if absolutely essential
 - **Document changes**: Update both README.md and CLAUDE.md
+
+### Metronome Development Best Practices
+- **Always initialize**: Call `MetronomePlayer.ensureLoaded(context)` before using metronome
+- **Consistent imports**: Use `import '../sound/metronome_player.dart'` throughout the app
+- **Verify API compatibility**: Check method existence before calling (especially experimental features)
+- **Test audio output**: Ensure "Generated sounds" log appears during initialization
+- **Handle fallbacks**: InstantMetronome is experimental - MetronomePlayer is production-ready
+- **Audio session management**: Use balanced configuration (gainTransientMayDuck) for coexistence
+- **Proper cleanup**: Call `stopContinuous()` instead of `stop()` for proper state management
 
 ### Performance
 - **Small build size**: Current optimized build ~217MB
